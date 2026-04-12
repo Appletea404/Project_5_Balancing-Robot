@@ -8,8 +8,8 @@ module i2c_master
     input wire rst_n,           // Active low reset
     input wire tick,            // Slow tick from clk_divider
 
-    output reg sda_enable,      // 1: SDA Low, 0: SDA Release
-    output reg scl_enable       // 1: SCL Low, 0: SCL Release
+    output reg  sda_enable,      // 1: SDA Low, 0: SDA Release
+    output wire scl_enable       // 1: SCL Low, 0: SCL Release
 );
 
 //================================================================================
@@ -21,6 +21,25 @@ localparam STOP  = 2'd2;
 
 reg [1:0] state;
 
+// SCL 위상
+reg scl_phase;
+
+// SCL 제어
+assign scl_enable = (scl_phase == 1'b0) ? 1'b1 : 1'b0;
+
+// SCL Phase 토글
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        scl_phase <= 1'b1;  // IDLE: High
+    end
+
+    else begin
+        if (tick) begin
+            scl_phase <= ~scl_phase;
+        end
+    end
+end
+
 //================================================================================
 // FSM
 //================================================================================
@@ -28,39 +47,41 @@ always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         state       <= IDLE;    
         sda_enable  <= 1'b0;    // release -> High
-        scl_enable  <= 1'b0;    // release -> High
     end
 
     else begin
         if (tick) begin
             case (state)
                 IDLE: begin
-                    // I2C idle 상태: SDA, SCL 둘 다 release
-                    sda_enable <= 1'b0;
-                    scl_enable <= 1'b0;
-                    state      <= START;
+                    // I2C idle: SDA release
+                    // START: SCL = High
+                    if (scl_phase == 1'b1) begin
+                        sda_enable <= 1'b0;
+                        state      <= START;
+                    end
                 end 
 
                 START: begin
                     // START 조건:
                     // SCL: High 일때 SDA: High -> Low
-                    sda_enable <= 1'b1;     // SDA Low
-                    scl_enable <= 1'b0;     // SCL High(release)
-                    state  <= STOP;
+                    if (scl_phase == 1'b1) begin
+                        sda_enable <= 1'b1;     // SDA Low
+                        state      <= STOP;
+                    end
                 end
 
                 STOP: begin
                     // STOP 조건:
                     // SCL: High 일때 SDA: Low -> High
-                    sda_enable <= 1'b0;     // SDA release -> High
-                    scl_enable <= 1'b0;     // SCL High(release)
-                    state  <= IDLE;
+                    if (scl_phase == 1'b1) begin
+                        sda_enable <= 1'b0;     // SDA release -> High
+                        state      <= IDLE;
+                    end
                 end
 
                 default: begin
                     state      <= IDLE;
                     sda_enable <= 1'b0;
-                    scl_enable <= 1'b0;
                 end 
             endcase
         end
