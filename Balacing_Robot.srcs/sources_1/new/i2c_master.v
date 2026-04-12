@@ -1,171 +1,373 @@
 `timescale 1ns / 1ps
 //================================================================================
 // i2c_master
-// - I2C 프로토콜의 START / 1-byte WRITE / ACK / STOP 기본 동작을 담당하는 모듈
-// - 현재 단계는 MPU6050의 slave address byte(Write) 전송 + ACK 확인용 FSM
-// - 아직 Register Write / Repeated Start / Read는 구현하지 않음
+// - MPU6050 WHO_AM_I(0x75) 1-byte read 전용 I2C 엔진
+// - Repeated START 방식 사용
+//
+//   START
+//   -> MPU6050_ADDR_W
+//   -> ACK
+//   -> reg_addr
+//   -> ACK
+//   -> REPEATED START
+//   -> MPU6050_ADDR_R
+//   -> ACK
+//   -> 1-byte READ
+//   -> NACK
+//   -> STOP
+//
+// open-drain 제어 규칙
+//   sda_enable = 1 -> SDA Low로 당김
+//   sda_enable = 0 -> SDA release(Z)
+//
+//   scl_enable = 1 -> SCL Low로 당김
+//   scl_enable = 0 -> SCL release(Z)
 //================================================================================
+
 module i2c_master
 (
-    input  wire clk,             // System clock
-    input  wire rst_n,           // Active low reset
-    input  wire tick,            // Slow tick from clk_divider
-    input  wire sda_in,          // SDA input sampled from top-level pin
+    input  wire       clk,
+    input  wire       rst_n,
+    input  wire       tick,
 
-    output reg  sda_enable,      // 1: SDA Low, 0: SDA Release
-    output reg  scl_enable,      // 1: SCL Low, 0: SCL Release
-    output reg  ack_ok           // 1: ACK received, 0: NACK or not checked yet
+    input  wire       start_req,   // 전체 transaction 시작 요청
+    input  wire [7:0] reg_addr,    // 읽을 레지스터 주소
+    input  wire       sda_in,      // SDA 입력 샘플
+
+    output reg        busy,        // transaction 진행 중
+    output reg        done,        // transaction 완료 pulse
+    output reg        ack_ok,      // 전체 ACK 성공 여부
+    output reg [7:0]  rx_data,     // 읽은 1-byte 데이터
+
+    output reg        sda_enable,  // 1: SDA Low, 0: SDA Release
+    output reg        scl_enable   // 1: SCL Low, 0: SCL Release
 );
 
 //================================================================================
-// MPU6050 Address / Register Definition
+// MPU6050 Address Definition
 //================================================================================
 localparam [6:0] MPU6050_ADDR_7BIT = 7'h68;
 localparam [7:0] MPU6050_ADDR_W    = {MPU6050_ADDR_7BIT, 1'b0}; // 0xD0
 localparam [7:0] MPU6050_ADDR_R    = {MPU6050_ADDR_7BIT, 1'b1}; // 0xD1
 
-localparam [7:0] REG_PWR_MGMT_1    = 8'h6B;
-localparam [7:0] REG_WHO_AM_I      = 8'h75;
-localparam [7:0] REG_ACCEL_XOUT_H  = 8'h3B;
-localparam [7:0] REG_GYRO_XOUT_H   = 8'h43;
+//================================================================================
+// Sequence Step
+//================================================================================
+localparam [1:0] STEP_ADDR_W = 2'd0;
+localparam [1:0] STEP_REG    = 2'd1;
+localparam [1:0] STEP_ADDR_R = 2'd2;
+localparam [1:0] STEP_READ   = 2'd3;
 
 //================================================================================
 // State Definition
 //================================================================================
-localparam [3:0] IDLE     = 4'd0; // SDA, SCL release
-localparam [3:0] START_A  = 4'd1; // IDLE 안정화
-localparam [3:0] START_B  = 4'd2; // START 조건 생성
-localparam [3:0] BIT_LOW  = 4'd3; // SCL Low, SDA에 bit 세팅
-localparam [3:0] BIT_HIGH = 4'd4; // SCL High, SDA 유지
-localparam [3:0] ACK_LOW  = 4'd5; // ACK 준비: SDA release, SCL Low
-localparam [3:0] ACK_HIGH = 4'd6; // ACK 확인: SCL High에서 SDA 읽기
-localparam [3:0] STOP_A   = 4'd7; // STOP 준비
-localparam [3:0] STOP_B   = 4'd8; // STOP 조건 생성
+localparam [4:0] ST_IDLE         = 5'd0;
+
+// START
+localparam [4:0] ST_START_A      = 5'd1;
+localparam [4:0] ST_START_B      = 5'd2;
+
+// WRITE BYTE
+localparam [4:0] ST_WRITE_LOW    = 5'd3;
+localparam [4:0] ST_WRITE_HIGH   = 5'd4;
+
+// ACK
+localparam [4:0] ST_ACK_LOW      = 5'd5;
+localparam [4:0] ST_ACK_HIGH     = 5'd6;
+
+// REPEATED START
+localparam [4:0] ST_RSTART_0     = 5'd7;
+localparam [4:0] ST_RSTART_1     = 5'd8;
+localparam [4:0] ST_RSTART_2     = 5'd9;
+localparam [4:0] ST_RSTART_3     = 5'd10;
+
+// READ BYTE
+localparam [4:0] ST_READ_LOW     = 5'd11;
+localparam [4:0] ST_READ_RISE    = 5'd12;
+localparam [4:0] ST_READ_HOLD    = 5'd13;
+localparam [4:0] ST_READ_SAMPLE  = 5'd14;
+
+// NACK
+localparam [4:0] ST_NACK_LOW     = 5'd15;
+localparam [4:0] ST_NACK_HIGH    = 5'd16;
+
+// STOP
+localparam [4:0] ST_STOP_0       = 5'd17;
+localparam [4:0] ST_STOP_1       = 5'd18;
+localparam [4:0] ST_STOP_2       = 5'd19;
+
+// DONE
+localparam [4:0] ST_DONE         = 5'd20;
 
 //================================================================================
 // Internal Register
 //================================================================================
-reg [3:0] state;
-reg [7:0] tx_data;   // 현재 전송할 1-byte 데이터
-reg [2:0] bit_cnt;   // MSB -> LSB 전송용 비트 카운터
+reg [4:0] state;
+reg [1:0] step;
+reg [7:0] tx_buf;
+reg [2:0] bit_cnt;
 
 //================================================================================
 // FSM
 //================================================================================
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        state      <= IDLE;
-        sda_enable <= 1'b0;           // release -> High
-        scl_enable <= 1'b0;           // release -> High
-        ack_ok     <= 1'b0;
-        tx_data    <= MPU6050_ADDR_W; // 예제: MPU6050 write address byte
+        state      <= ST_IDLE;
+        step       <= STEP_ADDR_W;
+        tx_buf     <= 8'd0;
         bit_cnt    <= 3'd7;
+
+        busy       <= 1'b0;
+        done       <= 1'b0;
+        ack_ok     <= 1'b0;
+        rx_data    <= 8'd0;
+
+        sda_enable <= 1'b0; // release
+        scl_enable <= 1'b0; // release
     end
     else begin
         if (tick) begin
             case (state)
-                IDLE: begin
-                    // I2C idle 상태
-                    // SDA, SCL 모두 release 상태(High)
-                    sda_enable <= 1'b0;
-                    scl_enable <= 1'b0;
-                    ack_ok     <= 1'b0;
 
-                    // 현재 단계에서는 MPU6050 write address byte를 전송 연습
-                    tx_data    <= MPU6050_ADDR_W;
-                    bit_cnt    <= 3'd7;
+                //==============================================================
+                // IDLE
+                //==============================================================
+                ST_IDLE: begin
+                    sda_enable <= 1'b0;   // SDA High(release)
+                    scl_enable <= 1'b0;   // SCL High(release)
+                    busy       <= 1'b0;
+                    done       <= 1'b0;
 
-                    state      <= START_A;
-                end
-
-                START_A: begin
-                    // IDLE 안정화
-                    sda_enable <= 1'b0; // SDA High
-                    scl_enable <= 1'b0; // SCL High
-                    state      <= START_B;
-                end
-
-                START_B: begin
-                    // START 조건:
-                    // SCL이 High일 때 SDA를 High -> Low로 변경
-                    sda_enable <= 1'b1; // SDA Low
-                    scl_enable <= 1'b0; // SCL High
-                    state      <= BIT_LOW;
-                end
-
-                BIT_LOW: begin
-                    // SCL Low 구간에서 현재 전송할 bit를 SDA에 준비
-                    scl_enable <= 1'b1; // SCL Low
-
-                    // I2C open-drain:
-                    // 0 전송 -> SDA Low
-                    // 1 전송 -> SDA release
-                    if (tx_data[bit_cnt] == 1'b0)
-                        sda_enable <= 1'b1;
-                    else
-                        sda_enable <= 1'b0;
-
-                    state <= BIT_HIGH;
-                end
-
-                BIT_HIGH: begin
-                    // SCL High 구간에서 SDA 값을 유지
-                    // 슬레이브는 이 구간에서 데이터를 샘플링
-                    scl_enable <= 1'b0; // SCL High
-
-                    if (bit_cnt == 3'd0)
-                        state <= ACK_LOW;
-                    else begin
-                        bit_cnt <= bit_cnt - 3'd1;
-                        state   <= BIT_LOW;
+                    if (start_req) begin
+                        busy       <= 1'b1;
+                        done       <= 1'b0;
+                        ack_ok     <= 1'b1;          // 시작 시 일단 성공 가정
+                        step       <= STEP_ADDR_W;
+                        tx_buf     <= MPU6050_ADDR_W;
+                        bit_cnt    <= 3'd7;
+                        state      <= ST_START_A;
                     end
                 end
 
-                ACK_LOW: begin
-                    // ACK 준비:
-                    // Master는 SDA를 release 해야 Slave가 ACK를 보낼 수 있음
-                    sda_enable <= 1'b0; // SDA release
-                    scl_enable <= 1'b1; // SCL Low
-                    state      <= ACK_HIGH;
+                //==============================================================
+                // START
+                // START = SCL High 상태에서 SDA High -> Low
+                //==============================================================
+                ST_START_A: begin
+                    sda_enable <= 1'b0;   // SDA High
+                    scl_enable <= 1'b0;   // SCL High
+                    state      <= ST_START_B;
                 end
 
-                ACK_HIGH: begin
-                    // ACK 확인:
-                    // SCL High 상태에서 SDA를 읽음
-                    scl_enable <= 1'b0; // SCL High
+                ST_START_B: begin
+                    sda_enable <= 1'b1;   // SDA Low
+                    scl_enable <= 1'b0;   // SCL High 유지
+                    state      <= ST_WRITE_LOW;
+                end
 
-                    // SDA가 Low면 ACK, High면 NACK
-                    if (sda_in == 1'b0)
-                        ack_ok <= 1'b1;
+                //==============================================================
+                // WRITE BYTE
+                //==============================================================
+                ST_WRITE_LOW: begin
+                    scl_enable <= 1'b1;   // SCL Low
+
+                    if (tx_buf[bit_cnt] == 1'b0)
+                        sda_enable <= 1'b1;   // '0' 전송
                     else
+                        sda_enable <= 1'b0;   // '1' 전송 = release
+
+                    state <= ST_WRITE_HIGH;
+                end
+
+                ST_WRITE_HIGH: begin
+                    scl_enable <= 1'b0;   // SCL High
+
+                    if (bit_cnt == 3'd0)
+                        state <= ST_ACK_LOW;
+                    else begin
+                        bit_cnt <= bit_cnt - 3'd1;
+                        state   <= ST_WRITE_LOW;
+                    end
+                end
+
+                //==============================================================
+                // ACK
+                //==============================================================
+                ST_ACK_LOW: begin
+                    sda_enable <= 1'b0;   // slave가 ACK 구동하도록 release
+                    scl_enable <= 1'b1;   // SCL Low
+                    state      <= ST_ACK_HIGH;
+                end
+
+                ST_ACK_HIGH: begin
+                    scl_enable <= 1'b0;   // SCL High
+
+                    if (sda_in != 1'b0) begin
+                        // ACK 실패
                         ack_ok <= 1'b0;
+                        state  <= ST_STOP_0;
+                    end
+                    else begin
+                        // ACK 성공
+                        case (step)
+                            STEP_ADDR_W: begin
+                                step    <= STEP_REG;
+                                tx_buf  <= reg_addr;
+                                bit_cnt <= 3'd7;
+                                state   <= ST_WRITE_LOW;
+                            end
 
-                    state <= STOP_A;
+                            STEP_REG: begin
+                                // STOP 없이 Repeated START 수행
+                                step    <= STEP_ADDR_R;
+                                tx_buf  <= MPU6050_ADDR_R;
+                                bit_cnt <= 3'd7;
+                                state   <= ST_RSTART_0;
+                            end
+
+                            STEP_ADDR_R: begin
+                                step    <= STEP_READ;
+                                bit_cnt <= 3'd7;
+                                rx_data <= 8'd0;
+                                state   <= ST_READ_LOW;
+                            end
+
+                            default: begin
+                                state <= ST_STOP_0;
+                            end
+                        endcase
+                    end
                 end
 
-                STOP_A: begin
-                    // STOP 준비:
-                    // SDA Low 상태 유지, SCL High
-                    sda_enable <= 1'b1; // SDA Low
-                    scl_enable <= 1'b0; // SCL High
-                    state      <= STOP_B;
+                //==============================================================
+                // REPEATED START
+                //==============================================================
+                ST_RSTART_0: begin
+                    sda_enable <= 1'b0;   // SDA release
+                    scl_enable <= 1'b1;   // SCL Low
+                    state      <= ST_RSTART_1;
                 end
 
-                STOP_B: begin
-                    // STOP 조건:
-                    // SCL High일 때 SDA를 Low -> High(release)로 변경
-                    sda_enable <= 1'b0; // SDA release -> High
-                    scl_enable <= 1'b0; // SCL High
-                    state      <= IDLE;
+                ST_RSTART_1: begin
+                    sda_enable <= 1'b0;   // SDA High 유지
+                    scl_enable <= 1'b1;   // SCL Low 유지
+                    state      <= ST_RSTART_2;
                 end
 
+                ST_RSTART_2: begin
+                    sda_enable <= 1'b0;   // SDA High
+                    scl_enable <= 1'b0;   // SCL High
+                    state      <= ST_RSTART_3;
+                end
+
+                ST_RSTART_3: begin
+                    sda_enable <= 1'b1;   // SDA High -> Low
+                    scl_enable <= 1'b0;   // SCL High 유지
+                    state      <= ST_WRITE_LOW;
+                end
+
+                //==============================================================
+                // READ BYTE
+                //
+                // 안정화 목적:
+                // 1) SCL Low에서 slave가 다음 비트를 준비할 시간 제공
+                // 2) SCL을 High로 올리는 상태 분리
+                // 3) High 상태를 한 tick 유지
+                // 4) 그 다음 tick에서 샘플링
+                //==============================================================
+                ST_READ_LOW: begin
+                    sda_enable <= 1'b0;   // master는 SDA release
+                    scl_enable <= 1'b1;   // SCL Low
+                    state      <= ST_READ_RISE;
+                end
+
+                ST_READ_RISE: begin
+                    sda_enable <= 1'b0;   // SDA release 유지
+                    scl_enable <= 1'b0;   // SCL High
+                    state      <= ST_READ_HOLD;
+                end
+
+                ST_READ_HOLD: begin
+                    sda_enable <= 1'b0;   // SDA release 유지
+                    scl_enable <= 1'b0;   // SCL High 유지
+                    state      <= ST_READ_SAMPLE;
+                end
+
+                ST_READ_SAMPLE: begin
+                    sda_enable       <= 1'b0;   // SDA release 유지
+                    scl_enable       <= 1'b0;   // SCL High 유지
+                    rx_data[bit_cnt] <= sda_in; // 안정화 후 샘플링
+
+                    if (bit_cnt == 3'd0)
+                        state <= ST_NACK_LOW;
+                    else begin
+                        bit_cnt <= bit_cnt - 3'd1;
+                        state   <= ST_READ_LOW;
+                    end
+                end
+
+                //==============================================================
+                // NACK
+                //==============================================================
+                ST_NACK_LOW: begin
+                    sda_enable <= 1'b0;   // release
+                    scl_enable <= 1'b1;   // SCL Low
+                    state      <= ST_NACK_HIGH;
+                end
+
+                ST_NACK_HIGH: begin
+                    sda_enable <= 1'b0;   // release 유지 -> NACK
+                    scl_enable <= 1'b0;   // SCL High
+                    state      <= ST_STOP_0;
+                end
+
+                //==============================================================
+                // STOP
+                // STOP = SCL High 상태에서 SDA Low -> High
+                //==============================================================
+                ST_STOP_0: begin
+                    sda_enable <= 1'b1;   // SDA Low
+                    scl_enable <= 1'b1;   // SCL Low
+                    state      <= ST_STOP_1;
+                end
+
+                ST_STOP_1: begin
+                    sda_enable <= 1'b1;   // SDA Low 유지
+                    scl_enable <= 1'b0;   // SCL High
+                    state      <= ST_STOP_2;
+                end
+
+                ST_STOP_2: begin
+                    sda_enable <= 1'b0;   // SDA release -> High
+                    scl_enable <= 1'b0;   // SCL High 유지
+                    state      <= ST_DONE;
+                end
+
+                //==============================================================
+                // DONE
+                //==============================================================
+                ST_DONE: begin
+                    busy  <= 1'b0;
+                    done  <= 1'b1;
+                    state <= ST_IDLE;
+                end
+
+                //==============================================================
+                // default
+                //==============================================================
                 default: begin
-                    state      <= IDLE;
+                    state      <= ST_IDLE;
+                    step       <= STEP_ADDR_W;
+                    tx_buf     <= 8'd0;
+                    bit_cnt    <= 3'd7;
+
+                    busy       <= 1'b0;
+                    done       <= 1'b0;
+                    ack_ok     <= 1'b0;
+                    rx_data    <= 8'd0;
+
                     sda_enable <= 1'b0;
                     scl_enable <= 1'b0;
-                    ack_ok     <= 1'b0;
-                    tx_data    <= MPU6050_ADDR_W;
-                    bit_cnt    <= 3'd7;
                 end
             endcase
         end
