@@ -8,10 +8,10 @@ module TB6612FNG(
     input reset,
 
     input [1:0] dirA_cmd,
-    input [7:0] dutyA,
+    input [12:0] dutyA,
 
     input [1:0] dirB_cmd,
-    input [7:0] dutyB,
+    input [12:0] dutyB,
 
     output reg PWMA,
     output reg AIN1,
@@ -48,7 +48,9 @@ module TB6612FNG(
             PWMA <= 0;
             PWMB <= 0;
         end else begin
-            if(pwm_counter >= 99) pwm_counter <= 0;
+            // 20kHz로 잡자 1틱 = 10ns
+            // 100M / 20k = 5000
+            if(pwm_counter >= 4999) pwm_counter <= 0;
             else pwm_counter <= pwm_counter + 1;
 
             if (pwm_counter < dutyA) PWMA <= 1'b1;

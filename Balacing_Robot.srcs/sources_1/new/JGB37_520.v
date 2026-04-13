@@ -19,15 +19,15 @@ module JGB37_520(
     );
 
     wire [1:0] w_dirA, w_dirB;
-    wire [7:0] w_dutyA, w_dutyB;
+    wire [12:0] w_dutyA, w_dutyB;
 
     assign w_dirA = (sw_A_cw && !sw_A_ccw) ? 2'b10 :
                     (sw_A_ccw && !sw_A_cw) ? 2'b01 : 2'b00;
     assign w_dirB = (sw_B_cw && !sw_B_ccw) ? 2'b10 :
                     (sw_B_ccw && !sw_B_cw) ? 2'b01 : 2'b00;
 
-    assign w_dutyA = (w_dirA != 2'b00) ? 8'd50 : 8'd0;
-    assign w_dutyB = (w_dirB != 2'b00) ? 8'd50 : 8'd0;
+    assign w_dutyA = (w_dirA != 2'b00) ? 13'd5000 : 13'd0;
+    assign w_dutyB = (w_dirB != 2'b00) ? 13'd5000 : 13'd0;
 
 
     TB6612FNG motor_driver(
