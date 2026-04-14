@@ -6,7 +6,12 @@
 
 
 
-module mpu6050_ctrl(
+module mpu6050_ctrl
+(
+    input wire clk,
+    input wire rst_n
+);
 
-    );
+
+
 endmodule
