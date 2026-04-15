@@ -42,6 +42,13 @@ module mpu6050_debug_uart
         ST_CAPTURE = 8'd1,
         ST_SPLIT   = 8'd2,
 
+        // 새로 추가할 반복 뺄셈 상태
+        ST_CALC_10000 = 8'd200,
+        ST_CALC_1000  = 8'd201,
+        ST_CALC_100   = 8'd202,
+        ST_CALC_10    = 8'd203,
+        ST_CALC_1     = 8'd204,
+
         // AX (states 3~22)
         ST_TX_AX_L1 = 8'd3,   ST_W_AX_L1 = 8'd4,
         ST_TX_AX_L2 = 8'd5,   ST_W_AX_L2 = 8'd6,
@@ -261,6 +268,7 @@ module mpu6050_debug_uart
 
     // ST_SPLIT 내부에서 절댓값 계산용 임시 변수 (blocking 대입으로 사용)
     reg [15:0] tmp_u;
+    reg [15:0] t_ax, t_ay, t_az, t_gx, t_gy, t_gz, t_an;
 
     //--------------------------------------------------------------------------
     // digit (0~9) → ASCII 문자
@@ -307,105 +315,96 @@ module mpu6050_debug_uart
                         state <= ST_CAPTURE;
                 end
 
+                //==========================================================
+                // 수정된 부분: 값 캡처 및 초기화
+                //==========================================================
                 ST_CAPTURE: begin
-                    ax_r  <= accel_x[15:0];
-                    ay_r  <= accel_y[15:0];
-                    az_r  <= accel_z[15:0];
-                    gx_r  <= gyro_x[15:0];
-                    gy_r  <= gyro_y[15:0];
-                    gz_r  <= gyro_z[15:0];
-                    state <= ST_SPLIT;
+                    // 1. 부호 판별
+                    ax_sg <= accel_x[15] ? "-" : "+";
+                    ay_sg <= accel_y[15] ? "-" : "+";
+                    az_sg <= accel_z[15] ? "-" : "+";
+                    gx_sg <= gyro_x[15]  ? "-" : "+";
+                    gy_sg <= gyro_y[15]  ? "-" : "+";
+                    gz_sg <= gyro_z[15]  ? "-" : "+";
+                    an_sg <= angle[15]   ? "-" : "+";
+
+                    // 2. 절댓값 저장
+                    t_ax <= accel_x[15] ? (~accel_x + 1'b1) : accel_x;
+                    t_ay <= accel_y[15] ? (~accel_y + 1'b1) : accel_y;
+                    t_az <= accel_z[15] ? (~accel_z + 1'b1) : accel_z;
+                    t_gx <= gyro_x[15]  ? (~gyro_x  + 1'b1) : gyro_x;
+                    t_gy <= gyro_y[15]  ? (~gyro_y  + 1'b1) : gyro_y;
+                    t_gz <= gyro_z[15]  ? (~gyro_z  + 1'b1) : gyro_z;
+                    t_an <= angle[15]   ? (~angle   + 1'b1) : angle;
+
+                    // 3. 자릿수 카운터 초기화
+                    ax_d4 <= 0; ax_d3 <= 0; ax_d2 <= 0; ax_d1 <= 0; ax_d0 <= 0;
+                    ay_d4 <= 0; ay_d3 <= 0; ay_d2 <= 0; ay_d1 <= 0; ay_d0 <= 0;
+                    az_d4 <= 0; az_d3 <= 0; az_d2 <= 0; az_d1 <= 0; az_d0 <= 0;
+                    gx_d4 <= 0; gx_d3 <= 0; gx_d2 <= 0; gx_d1 <= 0; gx_d0 <= 0;
+                    gy_d4 <= 0; gy_d3 <= 0; gy_d2 <= 0; gy_d1 <= 0; gy_d0 <= 0;
+                    gz_d4 <= 0; gz_d3 <= 0; gz_d2 <= 0; gz_d1 <= 0; gz_d0 <= 0;
+                    an_d4 <= 0; an_d3 <= 0; an_d2 <= 0; an_d1 <= 0; an_d0 <= 0;
+
+                    state <= ST_CALC_10000;
                 end
 
-                ST_SPLIT: begin
-                    // AX: 부호 판정 후 절댓값 → 5자리 분리
-                    ax_sg <= ax_r[15] ? "-" : "+";
-                    tmp_u  = ax_r[15] ? (~ax_r + 1'b1) : ax_r;
-                    ax_d4 <= tmp_u / 10000;
-                    ax_d3 <= (tmp_u % 10000) / 1000;
-                    ax_d2 <= (tmp_u % 1000)  / 100;
-                    ax_d1 <= (tmp_u % 100)   / 10;
-                    ax_d0 <= tmp_u % 10;
+                //==========================================================
+                // 수정된 부분: 반복 뺄셈 (나눗셈 대체)
+                //==========================================================
+                ST_CALC_10000: begin
+                    if (t_ax >= 10000 || t_ay >= 10000 || t_az >= 10000 || t_gx >= 10000 || t_gy >= 10000 || t_gz >= 10000 || t_an >= 10000) begin
+                        if (t_ax >= 10000) begin t_ax <= t_ax - 10000; ax_d4 <= ax_d4 + 4'd1; end
+                        if (t_ay >= 10000) begin t_ay <= t_ay - 10000; ay_d4 <= ay_d4 + 4'd1; end
+                        if (t_az >= 10000) begin t_az <= t_az - 10000; az_d4 <= az_d4 + 4'd1; end
+                        if (t_gx >= 10000) begin t_gx <= t_gx - 10000; gx_d4 <= gx_d4 + 4'd1; end
+                        if (t_gy >= 10000) begin t_gy <= t_gy - 10000; gy_d4 <= gy_d4 + 4'd1; end
+                        if (t_gz >= 10000) begin t_gz <= t_gz - 10000; gz_d4 <= gz_d4 + 4'd1; end
+                        if (t_an >= 10000) begin t_an <= t_an - 10000; an_d4 <= an_d4 + 4'd1; end
+                    end else state <= ST_CALC_1000;
+                end
 
-                    // AY
-                    ay_sg <= ay_r[15] ? "-" : "+";
-                    tmp_u  = ay_r[15] ? (~ay_r + 1'b1) : ay_r;
-                    ay_d4 <= tmp_u / 10000;
-                    ay_d3 <= (tmp_u % 10000) / 1000;
-                    ay_d2 <= (tmp_u % 1000)  / 100;
-                    ay_d1 <= (tmp_u % 100)   / 10;
-                    ay_d0 <= tmp_u % 10;
+                ST_CALC_1000: begin
+                    if (t_ax >= 1000 || t_ay >= 1000 || t_az >= 1000 || t_gx >= 1000 || t_gy >= 1000 || t_gz >= 1000 || t_an >= 1000) begin
+                        if (t_ax >= 1000) begin t_ax <= t_ax - 1000; ax_d3 <= ax_d3 + 4'd1; end
+                        if (t_ay >= 1000) begin t_ay <= t_ay - 1000; ay_d3 <= ay_d3 + 4'd1; end
+                        if (t_az >= 1000) begin t_az <= t_az - 1000; az_d3 <= az_d3 + 4'd1; end
+                        if (t_gx >= 1000) begin t_gx <= t_gx - 1000; gx_d3 <= gx_d3 + 4'd1; end
+                        if (t_gy >= 1000) begin t_gy <= t_gy - 1000; gy_d3 <= gy_d3 + 4'd1; end
+                        if (t_gz >= 1000) begin t_gz <= t_gz - 1000; gz_d3 <= gz_d3 + 4'd1; end
+                        if (t_an >= 1000) begin t_an <= t_an - 1000; an_d3 <= an_d3 + 4'd1; end
+                    end else state <= ST_CALC_100;
+                end
 
-                    // AZ
-                    az_sg <= az_r[15] ? "-" : "+";
-                    tmp_u  = az_r[15] ? (~az_r + 1'b1) : az_r;
-                    az_d4 <= tmp_u / 10000;
-                    az_d3 <= (tmp_u % 10000) / 1000;
-                    az_d2 <= (tmp_u % 1000)  / 100;
-                    az_d1 <= (tmp_u % 100)   / 10;
-                    az_d0 <= tmp_u % 10;
+                ST_CALC_100: begin
+                    if (t_ax >= 100 || t_ay >= 100 || t_az >= 100 || t_gx >= 100 || t_gy >= 100 || t_gz >= 100 || t_an >= 100) begin
+                        if (t_ax >= 100) begin t_ax <= t_ax - 100; ax_d2 <= ax_d2 + 4'd1; end
+                        if (t_ay >= 100) begin t_ay <= t_ay - 100; ay_d2 <= ay_d2 + 4'd1; end
+                        if (t_az >= 100) begin t_az <= t_az - 100; az_d2 <= az_d2 + 4'd1; end
+                        if (t_gx >= 100) begin t_gx <= t_gx - 100; gx_d2 <= gx_d2 + 4'd1; end
+                        if (t_gy >= 100) begin t_gy <= t_gy - 100; gy_d2 <= gy_d2 + 4'd1; end
+                        if (t_gz >= 100) begin t_gz <= t_gz - 100; gz_d2 <= gz_d2 + 4'd1; end
+                        if (t_an >= 100) begin t_an <= t_an - 100; an_d2 <= an_d2 + 4'd1; end
+                    end else state <= ST_CALC_10;
+                end
 
-                    // GX
-                    gx_sg <= gx_r[15] ? "-" : "+";
-                    tmp_u  = gx_r[15] ? (~gx_r + 1'b1) : gx_r;
-                    gx_d4 <= tmp_u / 10000;
-                    gx_d3 <= (tmp_u % 10000) / 1000;
-                    gx_d2 <= (tmp_u % 1000)  / 100;
-                    gx_d1 <= (tmp_u % 100)   / 10;
-                    gx_d0 <= tmp_u % 10;
+                ST_CALC_10: begin
+                    if (t_ax >= 10 || t_ay >= 10 || t_az >= 10 || t_gx >= 10 || t_gy >= 10 || t_gz >= 10 || t_an >= 10) begin
+                        if (t_ax >= 10) begin t_ax <= t_ax - 10; ax_d1 <= ax_d1 + 4'd1; end
+                        if (t_ay >= 10) begin t_ay <= t_ay - 10; ay_d1 <= ay_d1 + 4'd1; end
+                        if (t_az >= 10) begin t_az <= t_az - 10; az_d1 <= az_d1 + 4'd1; end
+                        if (t_gx >= 10) begin t_gx <= t_gx - 10; gx_d1 <= gx_d1 + 4'd1; end
+                        if (t_gy >= 10) begin t_gy <= t_gy - 10; gy_d1 <= gy_d1 + 4'd1; end
+                        if (t_gz >= 10) begin t_gz <= t_gz - 10; gz_d1 <= gz_d1 + 4'd1; end
+                        if (t_an >= 10) begin t_an <= t_an - 10; an_d1 <= an_d1 + 4'd1; end
+                    end else state <= ST_CALC_1;
+                end
 
-                    // GY
-                    gy_sg <= gy_r[15] ? "-" : "+";
-                    tmp_u  = gy_r[15] ? (~gy_r + 1'b1) : gy_r;
-                    gy_d4 <= tmp_u / 10000;
-                    gy_d3 <= (tmp_u % 10000) / 1000;
-                    gy_d2 <= (tmp_u % 1000)  / 100;
-                    gy_d1 <= (tmp_u % 100)   / 10;
-                    gy_d0 <= tmp_u % 10;
-
-                    // GZ
-                    gz_sg <= gz_r[15] ? "-" : "+";
-                    tmp_u  = gz_r[15] ? (~gz_r + 1'b1) : gz_r;
-                    gz_d4 <= tmp_u / 10000;
-                    gz_d3 <= (tmp_u % 10000) / 1000;
-                    gz_d2 <= (tmp_u % 1000)  / 100;
-                    gz_d1 <= (tmp_u % 100)   / 10;
-                    gz_d0 <= tmp_u % 10;
-
-                    // AN (angle, 0.01° 단위)
-                    an_sg <= angle[15] ? "-" : "+";
-                    tmp_u  = angle[15] ? (~angle + 1'b1) : angle;
-                    an_d4 <= tmp_u / 10000;
-                    an_d3 <= (tmp_u % 10000) / 1000;
-                    an_d2 <= (tmp_u % 1000)  / 100;
-                    an_d1 <= (tmp_u % 100)   / 10;
-                    an_d0 <= tmp_u % 10;
-
-                    // KP (unsigned)
-                    tmp_u  = kp;
-                    kp_d4 <= tmp_u / 10000;
-                    kp_d3 <= (tmp_u % 10000) / 1000;
-                    kp_d2 <= (tmp_u % 1000)  / 100;
-                    kp_d1 <= (tmp_u % 100)   / 10;
-                    kp_d0 <= tmp_u % 10;
-
-                    // KI (unsigned)
-                    tmp_u  = ki;
-                    ki_d4 <= tmp_u / 10000;
-                    ki_d3 <= (tmp_u % 10000) / 1000;
-                    ki_d2 <= (tmp_u % 1000)  / 100;
-                    ki_d1 <= (tmp_u % 100)   / 10;
-                    ki_d0 <= tmp_u % 10;
-
-                    // KD (unsigned)
-                    tmp_u  = kd;
-                    kd_d4 <= tmp_u / 10000;
-                    kd_d3 <= (tmp_u % 10000) / 1000;
-                    kd_d2 <= (tmp_u % 1000)  / 100;
-                    kd_d1 <= (tmp_u % 100)   / 10;
-                    kd_d0 <= tmp_u % 10;
-
-                    state <= ST_TX_AX_L1;
+                ST_CALC_1: begin
+                    ax_d0 <= t_ax[3:0]; ay_d0 <= t_ay[3:0]; az_d0 <= t_az[3:0];
+                    gx_d0 <= t_gx[3:0]; gy_d0 <= t_gy[3:0]; gz_d0 <= t_gz[3:0];
+                    an_d0 <= t_an[3:0];
+                    state <= ST_TX_AX_L1; // 변환 완료 후 UART 송신 시작
                 end
 
                 // ------ AX ------

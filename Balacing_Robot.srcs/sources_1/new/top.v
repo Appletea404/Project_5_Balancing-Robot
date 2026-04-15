@@ -1,21 +1,5 @@
 
 `timescale 1ns / 1ps
-//================================================================================
-// top
-// - Basys3 보드용 최상위 모듈
-// - MPU6050 + I2C master + UART debug
-// - top 내부에 bias 보정 로직 포함
-// - 기존 led[9:0] 유지
-// - 추가 led[15:10]으로 방향 표시
-//
-// 방향 LED 정책
-// - front / back / left / right : 기울기 방향 표시
-// - up / down : Z축 자세 표시
-//
-// 주의
-// - "위(up)"는 평평하게 정상 방향으로 놓였을 때 켜지는 것이 정상
-// - "아래(down)"는 뒤집혔을 때 켜짐
-//================================================================================
 
 module top
 (
@@ -27,7 +11,6 @@ module top
 
     input  wire        uart_rx,      // PC → FPGA (USB-UART RX, B18)
     output wire        uart_tx,
-    output wire [15:0] led,
 
     // TB6612FNG 모터 드라이버 출력
     output wire        PWMA_out,
@@ -146,9 +129,10 @@ module top
     // 런타임 PID 이득값 레지스터 (UART RX로 업데이트)
     // 기본값: KP=256(1.0), KI=26(≈0.1), KD=512(2.0) — Q8 포맷
     //--------------------------------------------------------------------------
-    reg [15:0]   kp_reg;
-    reg [15:0]   ki_reg;
-    reg [15:0]   kd_reg;
+    reg [15:0]        kp_reg;
+    reg [15:0]        ki_reg;
+    reg [15:0]        kd_reg;
+    reg signed [15:0] setpoint_reg;  // PID 목표 각도 (0.01° 단위, 기본 0)
 
     //--------------------------------------------------------------------------
     // UART RX 파서용 신호
@@ -160,9 +144,10 @@ module top
     localparam [1:0] RX_IDLE  = 2'd0,
                      RX_DIGIT = 2'd1;
     reg [1:0]    rx_state;
-    reg [1:0]    rx_cmd;             // 0=KP, 1=KI, 2=KD
+    reg [2:0]    rx_cmd;             // 0=KP, 1=KI, 2=KD, 3=Setpoint
     reg [15:0]   rx_acc;             // 수신 중 숫자 누적 레지스터
     reg [3:0]    rx_cnt;             // 수신 자릿수 카운터 (최대 5자리)
+    reg          rx_sign;            // 1 = 음수 (앞에 '-' 수신됨)
 
     //--------------------------------------------------------------------------
     // 방향 판단 threshold
@@ -379,10 +364,10 @@ module top
         .clk         (clk),
         .rst_n       (rst_n),
         .data_valid  (data_valid),
-
-        .accel_x     (ax_corr),
+    // y축으로 수정함 !!
+        .accel_x     (ay_corr),
         .accel_z     (az_corr),
-        .gyro_x      (gx_corr),
+        .gyro_x      (gy_corr),
 
         .angle       (angle),
         .angle_valid (angle_valid)
@@ -406,35 +391,46 @@ module top
     //==========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            kp_reg   <= 16'd256;
-            ki_reg   <= 16'd26;
-            kd_reg   <= 16'd512;
-            rx_state <= RX_IDLE;
-            rx_cmd   <= 2'd0;
-            rx_acc   <= 16'd0;
-            rx_cnt   <= 4'd0;
+            kp_reg       <= 16'd200;
+            ki_reg       <= 16'd0;
+            kd_reg       <= 16'd0;
+            setpoint_reg <= 16'sd0;
+            rx_state     <= RX_IDLE;
+            rx_cmd       <= 3'd0;
+            rx_acc       <= 16'd0;
+            rx_cnt       <= 4'd0;
+            rx_sign      <= 1'b0;
         end
         else if (rx_done) begin
             case (rx_state)
                 RX_IDLE: begin
-                    rx_acc <= 16'd0;
-                    rx_cnt <= 4'd0;
-                    if      (rx_byte == "P") begin rx_cmd <= 2'd0; rx_state <= RX_DIGIT; end
-                    else if (rx_byte == "I") begin rx_cmd <= 2'd1; rx_state <= RX_DIGIT; end
-                    else if (rx_byte == "D") begin rx_cmd <= 2'd2; rx_state <= RX_DIGIT; end
+                    rx_acc  <= 16'd0;
+                    rx_cnt  <= 4'd0;
+                    rx_sign <= 1'b0;
+                    if      (rx_byte == "P") begin rx_cmd <= 3'd0; rx_state <= RX_DIGIT; end
+                    else if (rx_byte == "I") begin rx_cmd <= 3'd1; rx_state <= RX_DIGIT; end
+                    else if (rx_byte == "D") begin rx_cmd <= 3'd2; rx_state <= RX_DIGIT; end
+                    else if (rx_byte == "S") begin rx_cmd <= 3'd3; rx_state <= RX_DIGIT; end
                 end
 
                 RX_DIGIT: begin
-                    if (rx_byte >= "0" && rx_byte <= "9" && rx_cnt < 4'd5) begin
+                    if (rx_byte == "-" && rx_cnt == 4'd0) begin
+                        // 첫 문자가 '-': 음수 플래그만 세우고 숫자 대기
+                        rx_sign <= 1'b1;
+                    end
+                    else if (rx_byte >= "0" && rx_byte <= "9" && rx_cnt < 4'd5) begin
                         rx_acc <= rx_acc * 10 + (rx_byte - "0");
                         rx_cnt <= rx_cnt + 4'd1;
                     end
                     else if (rx_byte == 8'h0D || rx_byte == 8'h0A) begin
                         // 줄 끝 (\r 또는 \n): 값 커밋
                         if (rx_cnt > 4'd0) begin
-                            if      (rx_cmd == 2'd0) kp_reg <= rx_acc;
-                            else if (rx_cmd == 2'd1) ki_reg <= rx_acc;
-                            else                     kd_reg <= rx_acc;
+                            if      (rx_cmd == 3'd0) kp_reg       <= rx_acc;
+                            else if (rx_cmd == 3'd1) ki_reg       <= rx_acc;
+                            else if (rx_cmd == 3'd2) kd_reg       <= rx_acc;
+                            else                     setpoint_reg <= rx_sign
+                                                         ? -$signed({1'b0, rx_acc[14:0]})
+                                                         :  $signed({1'b0, rx_acc[14:0]});
                         end
                         rx_state <= RX_IDLE;
                     end
@@ -459,7 +455,7 @@ module top
         .en        (pid_en),
 
         .angle_in  (angle),
-        .setpoint  (16'sd0),   // 직립 목표각 0°
+        .setpoint  (setpoint_reg),  // UART 'S' 명령으로 런타임 조정
 
         .kp        (kp_reg),
         .ki        (ki_reg),
@@ -530,45 +526,7 @@ module top
     //==========================================================================
     assign uart_tx = uart_tx_wire;
 
-    //==========================================================================
-    // 기존 LED 유지
-    // led[0] : rst_n
-    // led[1] : init_done
-    // led[2] : bias_done
-    // led[3] : ack_ok
-    // led[4] : 0
-    // led[5] : 0
-    // led[6] : 0
-    // led[7] : 0
-    // led[8] : 0
-    // led[9] : uart_tx_wire
-    //==========================================================================
-    assign led[0] = rst_n;
-    assign led[1] = init_done;
-    assign led[2] = bias_done;
-    assign led[3] = ack_ok;
-    assign led[4] = 1'b0;
-    assign led[5] = 1'b0;
-    assign led[6] = 1'b0;
-    assign led[7] = 1'b0;
-    assign led[8] = 1'b0;
-    assign led[9] = uart_tx_wire;
 
-    //==========================================================================
-    // 추가 방향 LED
-    // led[10] : front
-    // led[11] : back
-    // led[12] : left
-    // led[13] : right
-    // led[14] : up
-    // led[15] : down
-    //==========================================================================
-    assign led[10] = dir_front;
-    assign led[11] = dir_back;
-    assign led[12] = dir_left;
-    assign led[13] = dir_right;
-    assign led[14] = dir_up;
-    assign led[15] = dir_down;
 
 endmodule
 
