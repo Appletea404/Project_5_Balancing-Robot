@@ -7,14 +7,16 @@
 // - top 내부에 bias 보정 로직 포함
 // - 기존 led[9:0] 유지
 // - 추가 led[15:10]으로 방향 표시
+// - roll / pitch 계산 추가
 //
-// 방향 LED 정책
-// - front / back / left / right : 기울기 방향 표시
-// - up / down : Z축 자세 표시
+// 보정 방식
+// - data_valid가 들어올 때마다 raw 6축 샘플 누적
+// - 처음 256개 샘플 평균으로 bias 계산
+// - 이후 corrected = raw - bias 형태로 출력
 //
-// 주의
-// - "위(up)"는 평평하게 정상 방향으로 놓였을 때 켜지는 것이 정상
-// - "아래(down)"는 뒤집혔을 때 켜짐
+// roll / pitch
+// - atan 대신 간단 비율 기반 근사 사용
+// - 검증용이므로 degree가 아니라 "기울기 비례값"으로 해석
 //================================================================================
 
 module top
@@ -115,8 +117,8 @@ module top
     //--------------------------------------------------------------------------
     // 방향 판단 threshold
     //--------------------------------------------------------------------------
-    localparam signed [15:0] TILT_TH = 16'sd1000;   // 앞/뒤/좌/우 판정
-    localparam signed [15:0] Z_TH    = 16'sd12000;  // 위/아래 판정 (약 0.73g)
+    localparam signed [15:0] TILT_TH = 16'sd1000;
+    localparam signed [15:0] Z_TH    = 16'sd12000;
 
     //--------------------------------------------------------------------------
     // 방향 표시 신호
@@ -129,10 +131,16 @@ module top
     wire dir_down;
 
     //--------------------------------------------------------------------------
+    // roll / pitch 계산용
+    //--------------------------------------------------------------------------
+    reg signed [15:0] roll;
+    reg signed [15:0] pitch;
+
+    // scale factor
+    localparam signed [15:0] ANG_SCALE = 16'sd256;
+
+    //--------------------------------------------------------------------------
     // 방향 판정
-    //
-    // 실제 보드 방향에 따라 front/back, left/right 부호가 반대일 수 있음
-    // 반대로 나오면 해당 두 줄만 서로 바꾸면 됨
     //--------------------------------------------------------------------------
     assign dir_front = (ax_corr >  TILT_TH);
     assign dir_back  = (ax_corr < -TILT_TH);
@@ -140,9 +148,6 @@ module top
     assign dir_right = (ay_corr >  TILT_TH);
     assign dir_left  = (ay_corr < -TILT_TH);
 
-    // 위/아래는 평평한 자세 상태 판정
-    // up   : 윗면이 위로 향함 (정상 방향)
-    // down : 뒤집힘
     assign dir_up    = (az_corr >  Z_TH);
     assign dir_down  = (az_corr < -Z_TH);
 
@@ -220,8 +225,6 @@ module top
 
     //==========================================================================
     // bias 계산 + corrected 값 생성
-    // - data_valid가 올라올 때만 샘플 사용
-    // - 처음 256개 평균으로 bias 계산
     //==========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -305,8 +308,28 @@ module top
     end
 
     //==========================================================================
+    // roll / pitch 계산
+    // - atan 대신 간단 비율 기반 근사 사용
+    // - az가 너무 작을 때는 계산하지 않음
+    //==========================================================================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            roll  <= 16'sd0;
+            pitch <= 16'sd0;
+        end
+        else begin
+            if ((az_corr > 16'sd1000) || (az_corr < -16'sd1000)) begin
+                // 좌우 기울기
+                roll  <= (ay_corr * ANG_SCALE) / az_corr;
+
+                // 앞뒤 기울기
+                pitch <= (-ax_corr * ANG_SCALE) / az_corr;
+            end
+        end
+    end
+
+    //==========================================================================
     // UART debug
-    // - corrected 값 출력
     //==========================================================================
     mpu6050_debug_uart u_debug_uart
     (
@@ -321,6 +344,9 @@ module top
         .gyro_x     (gx_corr),
         .gyro_y     (gy_corr),
         .gyro_z     (gz_corr),
+
+        .roll       (roll),
+        .pitch      (pitch),
 
         .uart_tx_o  (uart_tx_wire)
     );
@@ -338,16 +364,6 @@ module top
 
     //==========================================================================
     // 기존 LED 유지
-    // led[0] : rst_n
-    // led[1] : init_done
-    // led[2] : bias_done
-    // led[3] : ack_ok
-    // led[4] : 0
-    // led[5] : 0
-    // led[6] : 0
-    // led[7] : 0
-    // led[8] : 0
-    // led[9] : uart_tx_wire
     //==========================================================================
     assign led[0] = rst_n;
     assign led[1] = init_done;
@@ -362,12 +378,6 @@ module top
 
     //==========================================================================
     // 추가 방향 LED
-    // led[10] : front
-    // led[11] : back
-    // led[12] : left
-    // led[13] : right
-    // led[14] : up
-    // led[15] : down
     //==========================================================================
     assign led[10] = dir_front;
     assign led[11] = dir_back;
@@ -379,37 +389,34 @@ module top
 endmodule
 
 
-
-
-// // Accel +- 2g Gyro +-250도/s
 // `timescale 1ns / 1ps
 // //================================================================================
 // // top
 // // - Basys3 보드용 최상위 모듈
 // // - MPU6050 + I2C master + UART debug
 // // - top 내부에 bias 보정 로직 포함
+// // - 기존 led[9:0] 유지
+// // - 추가 led[15:10]으로 방향 표시
 // //
-// // 보정 방식
-// // - data_valid가 들어올 때마다 raw 6축 샘플 누적
-// // - 처음 256개 샘플 평균으로 bias 계산
-// // - 이후 corrected = raw - bias 형태로 출력
+// // 방향 LED 정책
+// // - front / back / left / right : 기울기 방향 표시
+// // - up / down : Z축 자세 표시
 // //
-// // 현재 정책
-// // - 자이로(GX/GY/GZ)는 bias 제거
-// // - 가속도 AX/AY는 offset 제거
-// // - AZ는 초기 단계에서는 raw 유지
+// // 주의
+// // - "위(up)"는 평평하게 정상 방향으로 놓였을 때 켜지는 것이 정상
+// // - "아래(down)"는 뒤집혔을 때 켜짐
 // //================================================================================
 
 // module top
 // (
-//     input  wire       clk,
-//     input  wire       rst_n,
+//     input  wire        clk,
+//     input  wire        rst_n,
 
-//     inout  wire       i2c_sda,
-//     inout  wire       i2c_scl,
+//     inout  wire        i2c_sda,
+//     inout  wire        i2c_scl,
 
-//     output wire       uart_tx,
-//     output wire [9:0] led
+//     output wire        uart_tx,
+//     output wire [15:0] led
 // );
 
 //     //--------------------------------------------------------------------------
@@ -476,12 +483,12 @@ endmodule
 //     // bias 계산용 누적합
 //     //--------------------------------------------------------------------------
 //     reg [7:0]          cal_cnt;
-//     reg signed [23:0]  ax_sum;
-//     reg signed [23:0]  ay_sum;
-//     reg signed [23:0]  az_sum;
-//     reg signed [23:0]  gx_sum;
-//     reg signed [23:0]  gy_sum;
-//     reg signed [23:0]  gz_sum;
+//     reg signed [24:0]  ax_sum;
+//     reg signed [24:0]  ay_sum;
+//     reg signed [24:0]  az_sum;
+//     reg signed [24:0]  gx_sum;
+//     reg signed [24:0]  gy_sum;
+//     reg signed [24:0]  gz_sum;
 
 //     //--------------------------------------------------------------------------
 //     // 상위 상태
@@ -494,6 +501,40 @@ endmodule
 //     // UART 출력선
 //     //--------------------------------------------------------------------------
 //     wire               uart_tx_wire;
+
+//     //--------------------------------------------------------------------------
+//     // 방향 판단 threshold
+//     //--------------------------------------------------------------------------
+//     localparam signed [15:0] TILT_TH = 16'sd1000;   // 앞/뒤/좌/우 판정
+//     localparam signed [15:0] Z_TH    = 16'sd12000;  // 위/아래 판정 (약 0.73g)
+
+//     //--------------------------------------------------------------------------
+//     // 방향 표시 신호
+//     //--------------------------------------------------------------------------
+//     wire dir_front;
+//     wire dir_back;
+//     wire dir_left;
+//     wire dir_right;
+//     wire dir_up;
+//     wire dir_down;
+
+//     //--------------------------------------------------------------------------
+//     // 방향 판정
+//     //
+//     // 실제 보드 방향에 따라 front/back, left/right 부호가 반대일 수 있음
+//     // 반대로 나오면 해당 두 줄만 서로 바꾸면 됨
+//     //--------------------------------------------------------------------------
+//     assign dir_front = (ax_corr >  TILT_TH);
+//     assign dir_back  = (ax_corr < -TILT_TH);
+
+//     assign dir_right = (ay_corr >  TILT_TH);
+//     assign dir_left  = (ay_corr < -TILT_TH);
+
+//     // 위/아래는 평평한 자세 상태 판정
+//     // up   : 윗면이 위로 향함 (정상 방향)
+//     // down : 뒤집힘
+//     assign dir_up    = (az_corr >  Z_TH);
+//     assign dir_down  = (az_corr < -Z_TH);
 
 //     //==========================================================================
 //     // tick 생성
@@ -569,7 +610,7 @@ endmodule
 
 //     //==========================================================================
 //     // bias 계산 + corrected 값 생성
-//     // - data_valid가 올라올 때만 샘플을 사용
+//     // - data_valid가 올라올 때만 샘플 사용
 //     // - 처음 256개 평균으로 bias 계산
 //     //==========================================================================
 //     always @(posedge clk or negedge rst_n) begin
@@ -577,12 +618,12 @@ endmodule
 //             bias_done <= 1'b0;
 //             cal_cnt   <= 8'd0;
 
-//             ax_sum    <= 24'sd0;
-//             ay_sum    <= 24'sd0;
-//             az_sum    <= 24'sd0;
-//             gx_sum    <= 24'sd0;
-//             gy_sum    <= 24'sd0;
-//             gz_sum    <= 24'sd0;
+//             ax_sum    <= 25'sd0;
+//             ay_sum    <= 25'sd0;
+//             az_sum    <= 25'sd0;
+//             gx_sum    <= 25'sd0;
+//             gy_sum    <= 25'sd0;
+//             gz_sum    <= 25'sd0;
 
 //             ax_bias   <= 16'sd0;
 //             ay_bias   <= 16'sd0;
@@ -612,13 +653,13 @@ endmodule
 //                     gz_sum <= gz_sum + gz_raw;
 
 //                     if (cal_cnt == 8'hFF) begin
-//                         // 평균 = 합 / 256 = >> 8
-//                         ax_bias   <= ax_sum[23:8];
-//                         ay_bias   <= ay_sum[23:8];
-//                         az_bias   <= az_sum[23:8];
-//                         gx_bias   <= gx_sum[23:8];
-//                         gy_bias   <= gy_sum[23:8];
-//                         gz_bias   <= gz_sum[23:8];
+//                         // 평균 = 합 / 256 = >>> 8
+//                         ax_bias   <= ax_sum >>> 8;
+//                         ay_bias   <= ay_sum >>> 8;
+//                         az_bias   <= az_sum >>> 8;
+//                         gx_bias   <= gx_sum >>> 8;
+//                         gy_bias   <= gy_sum >>> 8;
+//                         gz_bias   <= gz_sum >>> 8;
 //                         bias_done <= 1'b1;
 //                     end
 //                     else begin
@@ -643,7 +684,6 @@ endmodule
 //                 ay_corr <= ay_raw - ay_bias;
 
 //                 // AZ는 초기 단계에서는 raw 유지
-//                 // 추후 필요 시 az_raw - az_bias + 16'sd16384 형태로 변경 가능
 //                 az_corr <= az_raw;
 
 //                 // 자이로 bias 제거
@@ -656,7 +696,7 @@ endmodule
 
 //     //==========================================================================
 //     // UART debug
-//     // - raw 대신 corrected 값 출력
+//     // - corrected 값 출력
 //     //==========================================================================
 //     mpu6050_debug_uart u_debug_uart
 //     (
@@ -687,27 +727,45 @@ endmodule
 //     assign uart_tx = uart_tx_wire;
 
 //     //==========================================================================
-//     // LED 디버그
+//     // 기존 LED 유지
 //     // led[0] : rst_n
 //     // led[1] : init_done
-//     // led[2] : busy
+//     // led[2] : bias_done
 //     // led[3] : ack_ok
-//     // led[4] : data_valid
-//     // led[5] : bias_done
-//     // led[6] : last_err[0]
-//     // led[7] : last_err[1]
-//     // led[8] : last_err[2]
+//     // led[4] : 0
+//     // led[5] : 0
+//     // led[6] : 0
+//     // led[7] : 0
+//     // led[8] : 0
 //     // led[9] : uart_tx_wire
 //     //==========================================================================
 //     assign led[0] = rst_n;
 //     assign led[1] = init_done;
-//     assign led[2] = busy;
+//     assign led[2] = bias_done;
 //     assign led[3] = ack_ok;
-//     assign led[4] = data_valid;
-//     assign led[5] = bias_done;
-//     assign led[6] = last_err[0];
-//     assign led[7] = last_err[1];
-//     assign led[8] = last_err[2];
+//     assign led[4] = 1'b0;
+//     assign led[5] = 1'b0;
+//     assign led[6] = 1'b0;
+//     assign led[7] = 1'b0;
+//     assign led[8] = 1'b0;
 //     assign led[9] = uart_tx_wire;
 
+//     //==========================================================================
+//     // 추가 방향 LED
+//     // led[10] : front
+//     // led[11] : back
+//     // led[12] : left
+//     // led[13] : right
+//     // led[14] : up
+//     // led[15] : down
+//     //==========================================================================
+//     assign led[10] = dir_front;
+//     assign led[11] = dir_back;
+//     assign led[12] = dir_left;
+//     assign led[13] = dir_right;
+//     assign led[14] = dir_up;
+//     assign led[15] = dir_down;
+
 // endmodule
+
+
