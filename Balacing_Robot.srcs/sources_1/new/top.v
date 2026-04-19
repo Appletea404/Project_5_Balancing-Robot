@@ -1,56 +1,54 @@
-
 `timescale 1ns / 1ps
 
 module top
 (
     input  wire        clk,
-    input  wire        reset,   // active-high (BTNC, U18)
+    input  wire        reset,   // active-high
 
     inout  wire        i2c_sda,
     inout  wire        i2c_scl,
 
-    input  wire        uart_rx,      // PC → FPGA (USB-UART RX, B18)
+    input  wire        uart_rx,
     output wire        uart_tx,
 
-    // TB6612FNG 모터 드라이버 출력
     output wire        PWMA_out,
     output wire        AIN1_out,
     output wire        AIN2_out,
     output wire        PWMB_out,
     output wire        BIN1_out,
     output wire        BIN2_out,
-    output wire        STBY_out,       // TB6612FNG STBY (SW0 ON=활성, OFF=정지)
+    output wire        STBY_out,
 
-    // STBY 제어 스위치
-    input  wire        sw_stby,        // SW0 (V17)
+    input  wire        sw_stby,
 
-    // AB 홀 엔코더 입력
-    input  wire        encA_a,          // 모터 A 채널 A (JC1, K17)
-    input  wire        encA_b,          // 모터 A 채널 B (JC2, M18)
-    input  wire        encB_a,          // 모터 B 채널 A (JC3, N17)
-    input  wire        encB_b           // 모터 B 채널 B (JC4, P18)
+    input  wire        encA_a,
+    input  wire        encA_b,
+    input  wire        encB_a,
+    input  wire        encB_b
 );
 
-    // active-low reset (내부 로직용)
+    //==========================================================================
+    // reset
+    //==========================================================================
     wire rst_n = ~reset;
 
-    //--------------------------------------------------------------------------
-    // 공통 tick
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // tick
+    //==========================================================================
     wire         tick;
 
-    //--------------------------------------------------------------------------
-    // mpu6050_ctrl <-> i2c_master 제어 신호
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // mpu6050_ctrl <-> i2c_master
+    //==========================================================================
     wire         start_req;
     wire         rw;
     wire [7:0]   reg_addr;
     wire [7:0]   tx_data;
     wire [7:0]   burst_len;
 
-    //--------------------------------------------------------------------------
-    // i2c_master 상태 신호
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // i2c_master status
+    //==========================================================================
     wire         busy;
     wire         done;
     wire         ack_ok;
@@ -59,15 +57,15 @@ module top
     wire [127:0] rx_buf;
     wire [7:0]   rx_count;
 
-    //--------------------------------------------------------------------------
-    // open-drain 제어
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // open-drain control
+    //==========================================================================
     wire         sda_enable;
     wire         scl_enable;
 
-    //--------------------------------------------------------------------------
-    // MPU raw 데이터
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // MPU raw data
+    //==========================================================================
     wire signed [15:0] ax_raw;
     wire signed [15:0] ay_raw;
     wire signed [15:0] az_raw;
@@ -75,9 +73,9 @@ module top
     wire signed [15:0] gy_raw;
     wire signed [15:0] gz_raw;
 
-    //--------------------------------------------------------------------------
-    // 보정 후 데이터
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // corrected data / bias
+    //==========================================================================
     reg                bias_done;
 
     reg signed [15:0]  ax_bias;
@@ -94,9 +92,9 @@ module top
     reg signed [15:0]  gy_corr;
     reg signed [15:0]  gz_corr;
 
-    //--------------------------------------------------------------------------
-    // bias 계산용 누적합
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // bias accumulation
+    //==========================================================================
     reg [7:0]          cal_cnt;
     reg signed [24:0]  ax_sum;
     reg signed [24:0]  ay_sum;
@@ -105,130 +103,165 @@ module top
     reg signed [24:0]  gy_sum;
     reg signed [24:0]  gz_sum;
 
-    //--------------------------------------------------------------------------
-    // 상위 상태
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // upper state
+    //==========================================================================
     wire               init_done;
     wire               data_valid;
     wire [2:0]         last_err;
 
-    //--------------------------------------------------------------------------
-    // UART 출력선
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // UART line
+    //==========================================================================
     wire               uart_tx_wire;
 
-    //--------------------------------------------------------------------------
-    // 각도 출력
-    //--------------------------------------------------------------------------
-    wire signed [15:0] angle;        // 0.01° 단위 (raw)
+    //==========================================================================
+    // angle
+    //==========================================================================
+    wire signed [15:0] angle;
     wire               angle_valid;
 
-    // S 커맨드로 캡처한 균형 기준각 (초기값 0)
+    // S command captured balance offset
     reg signed [15:0]  angle_offset;
-    // 보정된 각도: S 눌렀을 때 0이 됨
+
+    // corrected angle (0 after S)
     wire signed [15:0] angle_adj = angle - angle_offset;
 
-    //--------------------------------------------------------------------------
-    // PID 출력 / 모터 제어 신호
-    //--------------------------------------------------------------------------
-    wire [15:0]  pwm_duty;           // PID 출력 (0~1000)
-    wire         pid_dir;            // PID 방향 (0=전진, 1=후진)
-    wire         pid_en;             // PID 업데이트 트리거
+    //==========================================================================
+    // PID / motor
+    //==========================================================================
+    wire [15:0]  pwm_duty;
+    wire         pid_dir;
+    wire         pid_en;
 
-    // pwm_duty(0~1000) → dutyA/B(0~100) 변환
     wire [6:0]   motor_duty;
-    // pid_dir(1bit) → dirA/B_cmd(2bit) 변환 (CW=2'b10, CCW=2'b01)
     wire [1:0]   motor_dir_cmd;
 
-    //--------------------------------------------------------------------------
-    // 엔코더 출력
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // encoder
+    //==========================================================================
     wire signed [31:0] enc_pos_a, enc_pos_b;
     wire signed [15:0] enc_vel_a, enc_vel_b;
 
-    //--------------------------------------------------------------------------
-    // 엔코더 외부 루프 (위치 유지)
-    //--------------------------------------------------------------------------
-    reg signed [31:0] enc_ref_a, enc_ref_b;   // S 커맨드 시 기준 위치 캡처
-    reg        [15:0] kv_reg;                  // 외부 루프 이득 (기본 0=비활성)
+    //==========================================================================
+    // outer loop refs / runtime gains
+    //==========================================================================
+    reg signed [31:0] enc_ref_a, enc_ref_b;
+    reg        [15:0] kv_reg;
 
-    //--------------------------------------------------------------------------
-    // 런타임 PID 이득값 레지스터 (UART RX로 업데이트)
-    // 기본값: KP=256(1.0), KI=26(≈0.1), KD=512(2.0) — Q8 포맷
-    //--------------------------------------------------------------------------
     reg [15:0]        kp_reg;
     reg [15:0]        ki_reg;
     reg [15:0]        kd_reg;
-    reg signed [15:0] setpoint_reg;  // PID 목표 각도 (0.01° 단위, 기본 0)
+    reg signed [15:0] setpoint_reg;
 
-    //--------------------------------------------------------------------------
-    // UART RX 파서용 신호
-    //--------------------------------------------------------------------------
-    wire         rx_done;            // uart_rx에서 1바이트 수신 완료
-    wire [7:0]   rx_byte;            // 수신된 바이트
+    //==========================================================================
+    // UART RX parser
+    //==========================================================================
+    wire         rx_done;
+    wire [7:0]   rx_byte;
 
-    // 파서 FSM 상태
     localparam [1:0] RX_IDLE  = 2'd0,
                      RX_DIGIT = 2'd1;
-    reg [1:0]    rx_state;
-    reg [2:0]    rx_cmd;             // 0=KP, 1=KI, 2=KD, 3=Setpoint
-    reg [15:0]   rx_acc;             // 수신 중 숫자 누적 레지스터
-    reg [3:0]    rx_cnt;             // 수신 자릿수 카운터 (최대 5자리)
-    reg          rx_sign;            // 1 = 음수 (앞에 '-' 수신됨)
 
-    //--------------------------------------------------------------------------
-    // 엔코더 외부 루프: 위치 오차 → 각도 setpoint 보정
-    // enc_pos_err = (pos_a - ref_a) + (pos_b - ref_b) 합산
-    // enc_correction (0.01° 단위) = enc_pos_err * kv_reg (양수→앞으로 간 경우 뒤로 기움)
-    //--------------------------------------------------------------------------
-    // 1. 단순 뺄셈 연산 (조합 논리 유지)
+    reg [1:0]    rx_state;
+    reg [2:0]    rx_cmd;
+    reg [15:0]   rx_acc;
+    reg [3:0]    rx_cnt;
+    reg          rx_sign;
+    reg          s_pending;
+
+    //==========================================================================
+    // outer loop : position + velocity
+    //==========================================================================
     wire signed [31:0] enc_delta_a = enc_pos_a - enc_ref_a;
     wire signed [31:0] enc_delta_b = enc_pos_b - enc_ref_b;
 
-    // -------------------------------------------------------------------------
-    // 파이프라인 레지스터 선언
-    // -------------------------------------------------------------------------
-    reg signed [31:0] enc_pos_err_reg;
-    reg signed [31:0] enc_corr_q8_reg;
+    // 전후 이동 위치 오차
+    wire signed [31:0] pos_err_w = enc_delta_a - enc_delta_b;
+
+    // 전후 이동 속도 오차
+    wire signed [15:0] vel_err_w = enc_vel_a - enc_vel_b;
+
+    reg signed [31:0] pos_err_reg;
+    reg signed [15:0] vel_err_reg;
+
+    reg signed [31:0] pos_term_reg;
+    reg signed [31:0] vel_term_reg;
+
     reg signed [15:0] pid_setpoint;
 
-    // -------------------------------------------------------------------------
-    // 타이밍 에러 해결을 위한 3-Stage 파이프라인 연산
-    // -------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // 속도항 gain
+    // 너무 세게 주면 오히려 발산이 커져서 보수적으로 유지
+    //--------------------------------------------------------------------------
+    localparam signed [15:0] KV_VEL = 16'sd8;
+
+    //--------------------------------------------------------------------------
+    // 외부 루프 최대 보정 각도 제한 (0.01도 단위)
+    // 기존 ±220보다 약간 확장
+    //--------------------------------------------------------------------------
+    localparam signed [15:0] SP_CORR_MAX = 16'sd260;
+
+    //--------------------------------------------------------------------------
+    // outer loop pipeline
+    //--------------------------------------------------------------------------
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            enc_pos_err_reg <= 32'sd0;
-            enc_corr_q8_reg <= 32'sd0;
-            pid_setpoint    <= 16'sd0;
-        end else begin
-            // [Stage 1] 위치 오차 뺄셈
-            enc_pos_err_reg <= enc_delta_a - enc_delta_b;
+            pos_err_reg  <= 32'sd0;
+            vel_err_reg  <= 16'sd0;
+            pos_term_reg <= 32'sd0;
+            vel_term_reg <= 32'sd0;
+            pid_setpoint <= 16'sd0;
+        end
+        else if (angle_valid) begin
+            //------------------------------------------------------------------
+            // Stage 0: sample position / velocity error
+            //------------------------------------------------------------------
+            pos_err_reg <= pos_err_w;
+            vel_err_reg <= vel_err_w;
 
-            // [Stage 2] 클램핑 및 KV 게인 곱셈
-            enc_corr_q8_reg <= $signed(
-                (enc_pos_err_reg >  32'sd32767) ? 16'sd32767 :
-                (enc_pos_err_reg < -32'sd32768) ? -16'sd32768 :
-                enc_pos_err_reg[15:0]
+            //------------------------------------------------------------------
+            // Stage 1: position term
+            // kv_reg is position gain from UART "V"
+            //------------------------------------------------------------------
+            pos_term_reg <= $signed(
+                (pos_err_reg >  32'sd32767) ? 16'sd32767 :
+                (pos_err_reg < -32'sd32768) ? -16'sd32768 :
+                pos_err_reg[15:0]
             ) * $signed({1'b0, kv_reg});
 
-            // [Stage 3] 보정값 2차 클램핑 및 Setpoint 최종 덧셈
-            pid_setpoint <= setpoint_reg - (
-                (enc_corr_q8_reg >  32'sd128000) ? 16'sd500 :
-                (enc_corr_q8_reg < -32'sd128000) ? -16'sd500 :
-                enc_corr_q8_reg[23:8]
-            );
+            //------------------------------------------------------------------
+            // Stage 2: velocity term
+            //------------------------------------------------------------------
+            vel_term_reg <= $signed(vel_err_reg) * $signed(KV_VEL);
+
+            //------------------------------------------------------------------
+            // Stage 3: final setpoint correction
+            //
+            // position term keeps previous scale
+            // velocity term is kept moderate to avoid overreaction
+            //------------------------------------------------------------------
+            begin : OUTER_LOOP_SETPOINT
+                reg signed [31:0] sp_corr;
+
+                sp_corr = (pos_term_reg >>> 8) + (vel_term_reg >>> 4);
+
+                if (sp_corr >  $signed(SP_CORR_MAX))
+                    pid_setpoint <= setpoint_reg - SP_CORR_MAX;
+                else if (sp_corr < -$signed(SP_CORR_MAX))
+                    pid_setpoint <= setpoint_reg + SP_CORR_MAX;
+                else
+                    pid_setpoint <= setpoint_reg - sp_corr[15:0];
+            end
         end
     end
 
-    //--------------------------------------------------------------------------
-    // 방향 판단 threshold
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // direction thresholds
+    //==========================================================================
     localparam signed [15:0] TILT_TH = 16'sd1000;
     localparam signed [15:0] Z_TH    = 16'sd12000;
 
-    //--------------------------------------------------------------------------
-    // 방향 표시 신호
-    //--------------------------------------------------------------------------
     wire dir_front;
     wire dir_back;
     wire dir_left;
@@ -236,35 +269,33 @@ module top
     wire dir_up;
     wire dir_down;
 
-    //--------------------------------------------------------------------------
-    // PID 트리거: angle_valid & init_done & bias_done 모두 참일 때만 업데이트
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // PID trigger
+    //==========================================================================
     assign pid_en = angle_valid & init_done & bias_done;
 
-    //--------------------------------------------------------------------------
-    // 듀티 스케일링: 0~1000 → 0~100 (TB6612FNG는 7비트 0~100%)
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // duty scaling
+    //==========================================================================
     assign motor_duty = (pwm_duty >= 16'd1000) ? 7'd100 : pwm_duty[9:0] / 10;
 
-    //--------------------------------------------------------------------------
-    // 방향 변환: pid_dir 0→CW(전진), 1→CCW(후진)
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // direction conversion
+    //==========================================================================
     assign motor_dir_cmd = pid_dir ? 2'b01 : 2'b10;
 
-    //--------------------------------------------------------------------------
-    // 방향 판정
-    //--------------------------------------------------------------------------
+    //==========================================================================
+    // simple direction indicators
+    //==========================================================================
     assign dir_front = (ax_corr >  TILT_TH);
     assign dir_back  = (ax_corr < -TILT_TH);
-
     assign dir_right = (ay_corr >  TILT_TH);
     assign dir_left  = (ay_corr < -TILT_TH);
-
     assign dir_up    = (az_corr >  Z_TH);
     assign dir_down  = (az_corr < -Z_TH);
 
     //==========================================================================
-    // AB 홀 엔코더 (4x 쿼드러처, 10ms 속도 샘플링)
+    // encoder
     //==========================================================================
     encoder u_encoder
     (
@@ -274,7 +305,7 @@ module top
         .encA_b     (encA_b),
         .encB_a     (encB_a),
         .encB_b     (encB_b),
-        .vel_period (24'd1_000_000),   // 10ms @ 100MHz
+        .vel_period (24'd1_000_000),
         .pos_a      (enc_pos_a),
         .pos_b      (enc_pos_b),
         .vel_a      (enc_vel_a),
@@ -282,7 +313,7 @@ module top
     );
 
     //==========================================================================
-    // tick 생성
+    // tick generator
     //==========================================================================
     clk_divider u_clk_divider
     (
@@ -292,7 +323,7 @@ module top
     );
 
     //==========================================================================
-    // MPU6050 상위 제어
+    // MPU6050 top control
     //==========================================================================
     mpu6050_ctrl u_mpu6050_ctrl
     (
@@ -354,7 +385,7 @@ module top
     );
 
     //==========================================================================
-    // bias 계산 + corrected 값 생성
+    // bias calculation + corrected values
     //==========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -383,9 +414,6 @@ module top
             gz_corr   <= 16'sd0;
         end
         else begin
-            //------------------------------------------------------------------
-            // bias 계산 전
-            //------------------------------------------------------------------
             if (!bias_done) begin
                 if (data_valid) begin
                     ax_sum <= ax_sum + ax_raw;
@@ -395,22 +423,7 @@ module top
                     gy_sum <= gy_sum + gy_raw;
                     gz_sum <= gz_sum + gz_raw;
 
-
-
-                    // 수정 전
-                    // if (cal_cnt == 8'd31) begin
-                    //     // 평균 = 합 / 256 = >>> 8
-                    //     ax_bias   <= ax_sum >>> 8;
-                    //     ay_bias   <= ay_sum >>> 8;
-                    //     az_bias   <= az_sum >>> 8;
-                    //     gx_bias   <= gx_sum >>> 8;
-                    //     gy_bias   <= gy_sum >>> 8;
-                    //     gz_bias   <= gz_sum >>> 8;
-                    //     bias_done <= 1'b1;
-                    // end
-                    // 수정 후
                     if (cal_cnt == 8'd31) begin
-                        // 평균 = 합 / 32 = >>> 5
                         ax_bias   <= (ax_sum + ax_raw) >>> 5;
                         ay_bias   <= (ay_sum + ay_raw) >>> 5;
                         az_bias   <= (az_sum + az_raw) >>> 5;
@@ -424,7 +437,6 @@ module top
                     end
                 end
 
-                // bias 계산 전에는 raw 그대로 출력
                 ax_corr <= ax_raw;
                 ay_corr <= ay_raw;
                 az_corr <= az_raw;
@@ -432,18 +444,11 @@ module top
                 gy_corr <= gy_raw;
                 gz_corr <= gz_raw;
             end
-            //------------------------------------------------------------------
-            // bias 계산 후
-            //------------------------------------------------------------------
             else begin
-                // AX, AY는 offset 제거
                 ax_corr <= ax_raw - ax_bias;
                 ay_corr <= ay_raw - ay_bias;
-
-                // AZ는 초기 단계에서는 raw 유지
                 az_corr <= az_raw - az_bias;
 
-                // 자이로 bias 제거
                 gx_corr <= gx_raw - gx_bias;
                 gy_corr <= gy_raw - gy_bias;
                 gz_corr <= gz_raw - gz_bias;
@@ -452,26 +457,25 @@ module top
     end
 
     //==========================================================================
-    // 각도 계산 (상보 필터)
+    // angle calculation
     //==========================================================================
     angle_calc u_angle_calc
     (
         .clk         (clk),
         .rst_n       (rst_n),
         .data_valid  (data_valid),
-    // y축으로 수정함 !!
         .accel_x     (ay_corr),
         .accel_z     (az_corr),
         .gyro_x      (gx_corr),
-
         .angle       (angle),
         .angle_valid (angle_valid)
     );
 
     //==========================================================================
-    // UART RX (PC → FPGA, 9600bps, active-high reset)
+    // UART RX
     //==========================================================================
-    uart_rx u_uart_rx (
+    uart_rx u_uart_rx
+    (
         .clk     (clk),
         .reset   (reset),
         .rx_pin  (uart_rx),
@@ -480,9 +484,7 @@ module top
     );
 
     //==========================================================================
-    // PID K값 레지스터 초기화 + UART RX 파서
-    // 프로토콜: 'P'<숫자>\n → KP, 'I'<숫자>\n → KI, 'D'<숫자>\n → KD
-    // 예) "P384\n" → KP=384 (Kp=1.5)
+    // runtime gain registers + UART parser
     //==========================================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -492,13 +494,16 @@ module top
             setpoint_reg <= 16'sd0;
             angle_offset <= 16'sd0;
             kv_reg       <= 16'd0;
+
             enc_ref_a    <= 32'sd0;
             enc_ref_b    <= 32'sd0;
+
             rx_state     <= RX_IDLE;
             rx_cmd       <= 3'd0;
             rx_acc       <= 16'd0;
             rx_cnt       <= 4'd0;
             rx_sign      <= 1'b0;
+            s_pending    <= 1'b0;
         end
         else if (rx_done) begin
             case (rx_state)
@@ -506,16 +511,36 @@ module top
                     rx_acc  <= 16'd0;
                     rx_cnt  <= 4'd0;
                     rx_sign <= 1'b0;
-                    if      (rx_byte == "P") begin rx_cmd <= 3'd0; rx_state <= RX_DIGIT; end
-                    else if (rx_byte == "I") begin rx_cmd <= 3'd1; rx_state <= RX_DIGIT; end
-                    else if (rx_byte == "D") begin rx_cmd <= 3'd2; rx_state <= RX_DIGIT; end
-                    else if (rx_byte == "S") begin rx_cmd <= 3'd3; rx_state <= RX_DIGIT; end
-                    else if (rx_byte == "V") begin rx_cmd <= 3'd5; rx_state <= RX_DIGIT; end
+
+                    if      (rx_byte == "P") begin
+                        rx_cmd    <= 3'd0;
+                        rx_state  <= RX_DIGIT;
+                        s_pending <= 1'b0;
+                    end
+                    else if (rx_byte == "I") begin
+                        rx_cmd    <= 3'd1;
+                        rx_state  <= RX_DIGIT;
+                        s_pending <= 1'b0;
+                    end
+                    else if (rx_byte == "D") begin
+                        rx_cmd    <= 3'd2;
+                        rx_state  <= RX_DIGIT;
+                        s_pending <= 1'b0;
+                    end
+                    else if (rx_byte == "S") begin
+                        rx_cmd    <= 3'd3;
+                        rx_state  <= RX_DIGIT;
+                        s_pending <= 1'b1;
+                    end
+                    else if (rx_byte == "V") begin
+                        rx_cmd    <= 3'd5;
+                        rx_state  <= RX_DIGIT;
+                        s_pending <= 1'b0;
+                    end
                 end
 
                 RX_DIGIT: begin
                     if (rx_byte == "-" && rx_cnt == 4'd0) begin
-                        // 첫 문자가 '-': 음수 플래그만 세우고 숫자 대기
                         rx_sign <= 1'b1;
                     end
                     else if (rx_byte >= "0" && rx_byte <= "9" && rx_cnt < 4'd5) begin
@@ -523,35 +548,46 @@ module top
                         rx_cnt <= rx_cnt + 4'd1;
                     end
                     else if (rx_byte == 8'h0D || rx_byte == 8'h0A) begin
-                        // 줄 끝 (\r 또는 \n): 값 커밋
-                        if (rx_cmd == 3'd3) begin
-                            // S 커맨드: 각도 영점 + 인코더 기준 위치 캡처
+                        if (s_pending) begin
                             angle_offset <= angle;
                             setpoint_reg <= 16'sd0;
                             enc_ref_a    <= enc_pos_a;
                             enc_ref_b    <= enc_pos_b;
+                            s_pending    <= 1'b0;
                         end
                         else if (rx_cnt > 4'd0) begin
                             if      (rx_cmd == 3'd0) kp_reg <= rx_acc;
                             else if (rx_cmd == 3'd1) ki_reg <= rx_acc;
                             else if (rx_cmd == 3'd2) kd_reg <= rx_acc;
                             else if (rx_cmd == 3'd5) kv_reg <= rx_acc;
+
+                            s_pending <= 1'b0;
                         end
+                        else begin
+                            s_pending <= 1'b0;
+                        end
+
                         rx_state <= RX_IDLE;
+                        rx_cmd   <= 3'd0;
                     end
                     else begin
-                        // 숫자/줄끝 이외 문자: 파싱 중단
-                        rx_state <= RX_IDLE;
+                        rx_state  <= RX_IDLE;
+                        rx_cmd    <= 3'd0;
+                        s_pending <= 1'b0;
                     end
                 end
 
-                default: rx_state <= RX_IDLE;
+                default: begin
+                    rx_state  <= RX_IDLE;
+                    rx_cmd    <= 3'd0;
+                    s_pending <= 1'b0;
+                end
             endcase
         end
     end
 
     //==========================================================================
-    // PID 제어
+    // PID controller
     //==========================================================================
     pid u_pid
     (
@@ -559,8 +595,8 @@ module top
         .rst_n     (rst_n),
         .en        (pid_en),
 
-        .angle_in  (-angle_adj),    // 보정된 각도 사용 (S 후 0 기준)
-        .setpoint  (pid_setpoint),  // 수동 setpoint + 인코더 외부 루프 보정
+        .angle_in  (-angle_adj),
+        .setpoint  (pid_setpoint),
 
         .kp        (kp_reg),
         .ki        (ki_reg),
@@ -571,17 +607,17 @@ module top
     );
 
     //==========================================================================
-    // TB6612FNG 모터 드라이버
+    // motor driver
     //==========================================================================
     TB6612FNG u_tb6612fng
     (
         .clk      (clk),
-        .reset    (reset),          // active-high
+        .reset    (reset),
 
         .dirA_cmd (motor_dir_cmd),
         .dutyA    (motor_duty),
 
-        .dirB_cmd (~motor_dir_cmd),  // 모터 B 반대 방향 장착 → 방향 반전
+        .dirB_cmd (~motor_dir_cmd),
         .dutyB    (motor_duty),
 
         .PWMA     (PWMA_out),
@@ -594,40 +630,35 @@ module top
     );
 
     //==========================================================================
-    // UART debug
+    // debug UART
     //==========================================================================
     mpu6050_debug_uart u_debug_uart
     (
-        .clk        (clk),
-        .rst_n      (rst_n),
-        .init_done  (init_done),
-        .data_valid (data_valid),
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .init_done    (init_done),
+        .data_valid   (data_valid),
 
-        .accel_x    (ax_corr),
-        .accel_y    (ay_corr),
-        .accel_z    (az_corr),
-        .gyro_x     (gx_corr),
-        .gyro_y     (gy_corr),
-        .gyro_z     (gz_corr),
+        .accel_x      (ax_corr),
+        .accel_y      (ay_corr),
+        .accel_z      (az_corr),
+        .gyro_x       (gx_corr),
+        .gyro_y       (gy_corr),
+        .gyro_z       (gz_corr),
 
-        .angle      (angle_adj),    // 보정된 각도 표시 (S 후 0)
+        .angle        (angle_adj),
+        .kp           (kp_reg),
+        .ki           (ki_reg),
+        .kd           (kd_reg),
+        .setpoint     (pid_setpoint),
+        .angle_offset (angle_offset),
 
-        .kp         (kp_reg),
-        .ki         (ki_reg),
-        .kd         (kd_reg),
-        // 수정
-        // .setpoint   (angle_offset), // SP= 에 기준각 표시
-        .setpoint   (pid_setpoint), // SP= 에 최종 PID 목표각 표시
-        .angle_offset (angle_offset),   // OF= 에 저장된 기준각 표시
+        .vel_a        (enc_vel_a),
+        .vel_b        (enc_vel_b),
+        .pos_a        (enc_pos_a),
+        .pos_b        (enc_pos_b),
 
-        
-
-        .vel_a      (enc_vel_a),
-        .vel_b      (enc_vel_b),
-        .pos_a      (enc_pos_a),
-        .pos_b      (enc_pos_b),
-
-        .uart_tx_o  (uart_tx_wire)
+        .uart_tx_o    (uart_tx_wire)
     );
 
     //==========================================================================
@@ -637,12 +668,9 @@ module top
     assign i2c_scl = (scl_enable) ? 1'b0 : 1'bz;
 
     //==========================================================================
-    // UART 출력
+    // outputs
     //==========================================================================
     assign uart_tx  = uart_tx_wire;
     assign STBY_out = sw_stby;
 
-
-
 endmodule
-

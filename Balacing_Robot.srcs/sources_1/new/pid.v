@@ -58,9 +58,9 @@ module pid
     
     // 수정 후 
     // 최소 듀티 보상
-    localparam  [15:0] MIN_DUTY    = 16'd30;
+    localparam  [15:0] MIN_DUTY    = 16'd40;
     // 제자리 잔떨림 방지용 작은 출력 deadband
-    // localparam signed [31:0] OUT_DEAD = 32'sd10;    
+    localparam signed [31:0] OUT_DEAD = 32'sd10;    
 
     //================================================================================
     // FSM PID 로직
@@ -155,8 +155,36 @@ module pid
                 // end
 
                 // 수정 후 큰 각 보정
+                // ST_OUT: begin
+                //     if (pid_out > 32'sd0) begin
+                //         dir <= 1'b0;    // 전진
+
+                //         if (pid_out + $signed({1'b0, MIN_DUTY}) > $signed({1'b0, MAX_DUTY}))
+                //             pwm_duty <= MAX_DUTY;
+                //         else
+                //             pwm_duty <= pid_out[15:0] + MIN_DUTY;
+                //     end
+                //     else if (pid_out < 32'sd0) begin
+                //         dir <= 1'b1;    // 후진
+
+                //         if (neg_pid_out + $signed({1'b0, MIN_DUTY}) > $signed({1'b0, MAX_DUTY}))
+                //             pwm_duty <= MAX_DUTY;
+                //         else
+                //             pwm_duty <= neg_pid_out[15:0] + MIN_DUTY;
+                //     end
+                //     else begin
+                //         dir <= 1'b0;
+                //         pwm_duty <= 16'd0;
+                //     end
+
+                //     state <= ST_IDLE;
+                // end
+
                 ST_OUT: begin
-                    if (pid_out > 32'sd0) begin
+                    // 작은 출력은 deadband 안으로 보고 모터를 멈춘다.
+                    // 그래야 미세 오차/센서 잡음/바닥 기울기 때문에
+                    // 계속 최소 듀티로 밀어버리는 현상을 줄일 수 있다.
+                    if (pid_out > OUT_DEAD) begin
                         dir <= 1'b0;    // 전진
 
                         if (pid_out + $signed({1'b0, MIN_DUTY}) > $signed({1'b0, MAX_DUTY}))
@@ -164,7 +192,7 @@ module pid
                         else
                             pwm_duty <= pid_out[15:0] + MIN_DUTY;
                     end
-                    else if (pid_out < 32'sd0) begin
+                    else if (pid_out < -OUT_DEAD) begin
                         dir <= 1'b1;    // 후진
 
                         if (neg_pid_out + $signed({1'b0, MIN_DUTY}) > $signed({1'b0, MAX_DUTY}))
@@ -173,13 +201,13 @@ module pid
                             pwm_duty <= neg_pid_out[15:0] + MIN_DUTY;
                     end
                     else begin
+                        // deadband 안에서는 정지
                         dir <= 1'b0;
                         pwm_duty <= 16'd0;
                     end
 
                     state <= ST_IDLE;
                 end
-
     
                 default: state <= ST_IDLE;
             endcase
