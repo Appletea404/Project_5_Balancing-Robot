@@ -47,7 +47,7 @@ module pid
     parameter signed [15:0] GYRO_D_LIM  = 16'sd1024;
     parameter signed [15:0] PID_OUT_CLAMP = 16'sd900;
     parameter signed [31:0] D_TERM_SUM_CLAMP = 32'sd30720;
-    parameter signed [15:0] MAP_SMALL_THR = 16'sd112;
+    parameter signed [15:0] MAP_SMALL_THR = 16'sd160;
     parameter signed [15:0] MAP_MID_THR   = 16'sd432;
     parameter signed [15:0] SMALL_MIN_OUT_THR = 16'sd56;
     // Center-hold lock state:
@@ -71,6 +71,10 @@ module pid
     // Apply the strongest velocity damping only near center where overshoot
     // is most harmful. At larger angles it is reduced so recovery stays strong.
     parameter signed [15:0] VEL_DAMP_FULL_ERR_THR = 16'sd128;
+    // After center hold releases, keep the next couple of control updates
+    // gentle so recovery ramps up instead of kicking immediately.
+    parameter [1:0]         HOLD_RELEASE_SOFT_CYCLES = 2'd3;
+    parameter [6:0]         HOLD_RELEASE_DUTY_MAX    = 7'd18;
     // Start boost helps the 12V JGB37-520 overcome static friction.
     // Tune with care: too large or too long will make the robot kick too hard.
     parameter        START_BOOST_ENABLE      = 1'b1;
@@ -128,8 +132,10 @@ module pid
     reg               vel_same_dir_reg;
     reg               pid_active_reg;
     reg               center_hold_reg;
+    reg               hold_prev_reg;
     reg               dir_prev_reg;
     reg [1:0]         dir_stable_cnt;
+    reg [1:0]         hold_release_soft_cnt;
 
     //================================================================================
     // 출력 계산용 조합 논리 (ST_OUT 에서만 사용)
@@ -180,7 +186,7 @@ module pid
     // - mid   : smooth practical recovery
     // - large : strong recovery without an immediate jump to max duty
     wire [6:0] duty_mid_w =
-        7'd49 + (mid_delta_w >> 5) + (mid_delta_w >> 6);
+        7'd36 + (mid_delta_w >> 7) + (mid_delta_w >> 8);
     wire [6:0] duty_large_w =
         7'd69 + (large_delta_w >> 5);
     wire [6:0] duty_piecewise_w =
@@ -191,10 +197,11 @@ module pid
     // This removes the sharp duty step that was kicking the robot through center.
     wire [15:0] active_min_delta_w =
         (pid_out_abs_reg > SMALL_MIN_OUT_THR) ? (pid_out_abs_reg - SMALL_MIN_OUT_THR) : 16'd0;
-    wire [7:0] active_min_ramp_ext_w = {2'b00, active_min_delta_w[15:2]};
+    wire [8:0] active_min_ramp_ext_w = {3'b000, active_min_delta_w[15:6]};
     wire [6:0] active_min_ramp_w =
-        (active_min_ramp_ext_w[7] || (active_min_ramp_ext_w[6:0] > DUTY_ACTIVE_MIN)) ?
-        DUTY_ACTIVE_MIN : active_min_ramp_ext_w[6:0];
+        active_min_ramp_ext_w[8] ? DUTY_ACTIVE_MIN :
+        (active_min_ramp_ext_w[6:0] > DUTY_ACTIVE_MIN) ? DUTY_ACTIVE_MIN :
+                                                         active_min_ramp_ext_w[6:0];
     wire active_min_need_w =
         (pid_out_abs_reg >= SMALL_MIN_OUT_THR) &&
         (active_min_ramp_w > duty_piecewise_w);
@@ -230,6 +237,12 @@ module pid
     // Apply the current-cycle hold decision immediately to the output logic,
     // while still storing the state in center_hold_reg for hysteresis memory.
     wire hold_apply_w = center_hold_next_w;
+    wire just_released_hold_w = hold_prev_reg && !hold_apply_w;
+    wire hold_release_soft_w = (hold_release_soft_cnt != 2'd0);
+    wire [6:0] duty_after_soft_w =
+        (duty_final_w > HOLD_RELEASE_DUTY_MAX) ? HOLD_RELEASE_DUTY_MAX : duty_final_w;
+    wire [6:0] boost_after_soft_w =
+        (boost_duty_w > HOLD_RELEASE_DUTY_MAX) ? HOLD_RELEASE_DUTY_MAX : boost_duty_w;
     assign pid_out_dbg =
         (pid_out >  32'sd32767) ? 16'sd32767 :
         (pid_out < -32'sd32768) ? -16'sd32768 :
@@ -261,8 +274,10 @@ module pid
             vel_same_dir_reg <= 1'b0;
             pid_active_reg <= 1'b0;
             center_hold_reg <= 1'b0;
+            hold_prev_reg <= 1'b0;
             dir_prev_reg <= 1'b0;
             dir_stable_cnt <= 2'd0;
+            hold_release_soft_cnt <= 2'd0;
 
             pwm_duty    <= 16'd0;
             dir         <= 1'b0;
@@ -364,6 +379,7 @@ module pid
                 // [Stage 4] 출력 방향/절대값 분리
                 //------------------------------------------------------------------
                 ST_OUT: begin
+                    hold_prev_reg <= center_hold_reg;
                     // Single source of truth for hold:
                     // update the lock state only here, from the current-cycle
                     // latched error/velocity signals.
@@ -433,6 +449,14 @@ module pid
                     motor_duty_sel_reg <= 7'd0;
                     boost_active_dbg <= 1'b0;
 
+                    // Hold exit should recover immediately, but not with a kick.
+                    // Clamp the first 1~2 commands after hold release so duty
+                    // ramps back in smoothly.
+                    if (just_released_hold_w)
+                        hold_release_soft_cnt <= HOLD_RELEASE_SOFT_CYCLES;
+                    else if (hold_release_soft_cnt != 2'd0)
+                        hold_release_soft_cnt <= hold_release_soft_cnt - 2'd1;
+
                     // Track whether the requested direction has stayed stable.
                     // Boost is armed only after the command stops dithering.
                     if (!pid_active_reg || hold_apply_w) begin
@@ -460,16 +484,16 @@ module pid
                         if ((boost_hold_cnt != 3'd0) && boost_req_w) begin
                             sat_flag <= boost_sat_w;
                             active_min_applied <= 1'b1;
-                            motor_duty_dbg <= boost_duty_w;
-                            motor_duty_sel_reg <= boost_duty_w;
+                            motor_duty_dbg <= hold_release_soft_w ? boost_after_soft_w : boost_duty_w;
+                            motor_duty_sel_reg <= hold_release_soft_w ? boost_after_soft_w : boost_duty_w;
                             boost_active_dbg <= 1'b1;
                             boost_hold_cnt <= boost_hold_cnt - 3'd1;
                         end
                         else begin
                             sat_flag <= sat_flag_w;
                             active_min_applied <= active_min_need_w;
-                            motor_duty_dbg <= duty_final_w;
-                            motor_duty_sel_reg <= duty_final_w;
+                            motor_duty_dbg <= hold_release_soft_w ? duty_after_soft_w : duty_final_w;
+                            motor_duty_sel_reg <= hold_release_soft_w ? duty_after_soft_w : duty_final_w;
                             if (boost_req_w && (START_BOOST_HOLD_CYCLES != 3'd0))
                                 boost_hold_cnt <= START_BOOST_HOLD_CYCLES - 3'd1;
                             else
