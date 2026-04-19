@@ -35,15 +35,11 @@ module angle_calc
     reg               calc_step2;
 
 
-    // 추가
-    wire signed [15:0] accel_z_abs = accel_z[15] ? -accel_z : accel_z;
-
-
-    // accel_z 크기에 따라 사용할 accel gain 미리 선택(추가)
-    wire signed [31:0] accel_gain =
-        (accel_z_abs > 16'sd14000) ? 32'sd80 :
-        (accel_z_abs > 16'sd10000) ? 32'sd60 :
-                                    32'sd40;
+    // top.v에서 accel_z는 bias를 뺀 값이므로 직립 시 0 근처가 된다.
+    // 따라서 accel_z 크기로 gain을 바꾸면 거의 항상 최저 gain만 선택된다.
+    // 현재 배치/로그 기준에서는 고정 gain 쪽이 더 예측 가능하다.
+    localparam signed [31:0] ACCEL_GAIN = 32'sd60;
+    localparam signed [31:0] GYRO_GAIN  = 32'sd250;
 
     // 다음 클럭의 상보 필터 계산 결과를 담을 wire (1클럭 지연 없는 출력을 위함)
     wire signed [31:0] next_angle_q8;
@@ -87,8 +83,10 @@ module angle_calc
             // 수정 후
             // // [Stage 1] 데이터 수신 및 1차 곱셈 (무거운 연산 먼저 수행)            
             if (data_valid) begin
-                accel_q8_reg <= $signed(accel_x) * accel_gain;
-                gyro_q8_reg  <= ($signed(gyro_x) * 32'sd500) >>> 8;
+                accel_q8_reg <= $signed(accel_x) * ACCEL_GAIN;
+                // mpu6050_ctrl read period is 5ms, so the gyro integration gain
+                // is halved from the old 10ms setting.
+                gyro_q8_reg  <= ($signed(gyro_x) * GYRO_GAIN) >>> 8;
                 calc_step2   <= 1'b1; // 다음 클럭에서 2단계 진행하도록 플래그 세움
             end
 
