@@ -3,7 +3,6 @@
 
 
 module TB6612FNG(
-
     input clk,
     input reset,
 
@@ -22,6 +21,10 @@ module TB6612FNG(
     output reg BIN2
     );
 
+
+    // ==============================================================
+    // 방향 제어
+    // ==============================================================
     always @(*) begin
         case (dirA_cmd)
             2'b00: begin AIN1 = 1'b0; AIN2 = 1'b0; end      // Stop
@@ -40,6 +43,19 @@ module TB6612FNG(
         endcase
     end
 
+
+
+    //--------------------------------------------------------------------------
+    // 1kHz PWM 생성
+    //
+    // 입력 클럭이 100MHz라고 가정
+    // 100MHz / 1kHz = 100000 카운트
+    //
+    // dutyA, dutyB는 0~100(%) 범위를 사용한다고 가정
+    // 1% = 1000카운트
+    //--------------------------------------------------------------------------
+
+    // 수정 전 20kHz
     reg [15:0] pwm_counter;
     wire [12:0] dutyA_50;
     wire [12:0] dutyB_50;
@@ -67,11 +83,40 @@ module TB6612FNG(
         
     end
 
+    // 수정 후 1kHz
+    // reg  [16:0] pwm_counter;
+    // wire [16:0] dutyA_cnt;
+    // wire [16:0] dutyB_cnt;
+
+    // assign dutyA_cnt = 17'd1000 * dutyA;
+    // assign dutyB_cnt = 17'd1000 * dutyB;
+
+    // always @(posedge clk or posedge reset) begin
+    //     if (reset) begin
+    //         pwm_counter <= 17'd0;
+    //         PWMA        <= 1'b0;
+    //         PWMB        <= 1'b0;
+    //     end
+    //     else begin
+    //         // 1kHz PWM period
+    //         if (pwm_counter >= 17'd99999)
+    //             pwm_counter <= 17'd0;
+    //         else
+    //             pwm_counter <= pwm_counter + 17'd1;
+
+    //         // PWM A 출력
+    //         if (pwm_counter < dutyA_cnt)
+    //             PWMA <= 1'b1;
+    //         else
+    //             PWMA <= 1'b0;
+
+    //         // PWM B 출력
+    //         if (pwm_counter < dutyB_cnt)
+    //             PWMB <= 1'b1;
+    //         else
+    //             PWMB <= 1'b0;
+    //     end
+    // end
+
 endmodule
 
-
-module Encoder (  
-    
-);
-    
-endmodule

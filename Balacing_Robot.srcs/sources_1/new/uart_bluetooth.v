@@ -1,59 +1,59 @@
 `timescale 1ns / 1ps
 
 
-module uart_bluetooth(
-    input  clk,
-    input  reset,
-    input  rx_pin,
-    output tx_pin
-);
+// module uart_bluetooth(
+//     input  clk,
+//     input  reset,
+//     input  rx_pin,
+//     output tx_pin
+// );
 
-    wire        b_tick;
-    wire [7:0]  rx_data;
-    wire        rx_done;
+//     wire        b_tick;
+//     wire [7:0]  rx_data;
+//     wire        rx_done;
 
-    // echo 로직: rx_done 펄스 → tx_data/tx_start 생성
-    reg [7:0] echo_data;
-    reg       echo_start;
+//     // echo 로직: rx_done 펄스 → tx_data/tx_start 생성
+//     reg [7:0] echo_data;
+//     reg       echo_start;
 
-    always @(posedge clk or posedge reset) begin
-        if (reset) begin
-            echo_data  <= 0;
-            echo_start <= 0;
-        end else begin
-            echo_start <= 0;          // 기본 0 (1클럭 펄스)
-            if (rx_done) begin
-                echo_data  <= rx_data;
-                echo_start <= 1;
-            end
-        end
-    end
+//     always @(posedge clk or posedge reset) begin
+//         if (reset) begin
+//             echo_data  <= 0;
+//             echo_start <= 0;
+//         end else begin
+//             echo_start <= 0;          // 기본 0 (1클럭 펄스)
+//             if (rx_done) begin
+//                 echo_data  <= rx_data;
+//                 echo_start <= 1;
+//             end
+//         end
+//     end
 
-    baud_rate u_baud(
-        .clk(clk),
-        .reset(reset),
-        .b_tick(b_tick)
-    );
+//     baud_rate u_baud(
+//         .clk(clk),
+//         .reset(reset),
+//         .b_tick(b_tick)
+//     );
 
-    uart_tx u_tx(
-        .clk(clk),
-        .reset(reset),
-        .b_tick(b_tick),
-        .tx_start(echo_start),
-        .tx_data(echo_data),
-        .tx_pin(tx_pin),
-        .tx_done()              // echo 용도에선 미사용
-    );
+//     uart_tx u_tx(
+//         .clk(clk),
+//         .reset(reset),
+//         .b_tick(b_tick),
+//         .tx_start(echo_start),
+//         .tx_data(echo_data),
+//         .tx_pin(tx_pin),
+//         .tx_done()              // echo 용도에선 미사용
+//     );
 
-    uart_rx u_rx(
-        .clk(clk),
-        .reset(reset),
-        .rx_pin(rx_pin),
-        .rx_data(rx_data),
-        .rx_done(rx_done)
-    );
+//     uart_rx u_rx(
+//         .clk(clk),
+//         .reset(reset),
+//         .rx_pin(rx_pin),
+//         .rx_data(rx_data),
+//         .rx_done(rx_done)
+//     );
 
-endmodule
+// endmodule
 
 
 module baud_rate (
@@ -129,7 +129,7 @@ module uart_tx (
                         tx_pin <= tx_buf[0];                // 0번비트 대입
                         if(bit_cnt != 7)begin
                             bit_cnt <= bit_cnt + 1;
-                            tx_buf <= tx_buf >> 1;
+                            tx_buf <= tx_buf >> 1;          // 이후 비트시프팅
                         
                         end else begin
                             state <= STOP;
