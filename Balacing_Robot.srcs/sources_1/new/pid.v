@@ -47,7 +47,7 @@ module pid
     parameter signed [15:0] PID_OUT_CLAMP = 16'sd900;
     parameter signed [31:0] D_TERM_SUM_CLAMP = 32'sd30720;
     parameter signed [15:0] MAP_SMALL_THR = 16'sd160;
-    parameter signed [15:0] MAP_MID_THR   = 16'sd200;
+    parameter signed [15:0] MAP_MID_THR   = 16'sd240;
     parameter signed [15:0] SMALL_MIN_OUT_THR = 16'sd56;
     // Center-hold lock state:
     // once the robot is both near upright and nearly stationary, force the
@@ -72,8 +72,8 @@ module pid
     parameter signed [15:0] VEL_DAMP_FULL_ERR_THR = 16'sd128;
     // After center hold releases, keep the next couple of control updates
     // gentle so recovery ramps up instead of kicking immediately.
-    parameter [1:0]         HOLD_RELEASE_SOFT_CYCLES = 2'd3;
-    parameter [6:0]         HOLD_RELEASE_DUTY_MAX    = 7'd18;
+    parameter [2:0]         HOLD_RELEASE_SOFT_CYCLES = 3'd4;
+    parameter [6:0]         HOLD_RELEASE_DUTY_MAX    = 7'd16;
     // Start boost helps the 12V JGB37-520 overcome static friction.
     // Tune with care: too large or too long will make the robot kick too hard.
     parameter        START_BOOST_ENABLE      = 1'b1;
@@ -134,7 +134,7 @@ module pid
     reg               hold_prev_reg;
     reg               dir_prev_reg;
     reg [1:0]         dir_stable_cnt;
-    reg [1:0]         hold_release_soft_cnt;
+    reg [2:0]         hold_release_soft_cnt;
 
     //================================================================================
     // 출력 계산용 조합 논리 (ST_OUT 에서만 사용)
@@ -185,7 +185,7 @@ module pid
     // - mid   : smooth practical recovery
     // - large : strong recovery without an immediate jump to max duty
     wire [6:0] duty_mid_w =
-        7'd30 + (mid_delta_w >> 8);
+        7'd26 + (mid_delta_w >> 9);
     wire [6:0] duty_large_w =
         7'd58 + (large_delta_w >> 5);
     wire [6:0] duty_piecewise_w =
@@ -238,7 +238,7 @@ module pid
     // while still storing the state in center_hold_reg for hysteresis memory.
     wire hold_apply_w = center_hold_next_w;
     wire just_released_hold_w = hold_prev_reg && !hold_apply_w;
-    wire hold_release_soft_w = (hold_release_soft_cnt != 2'd0);
+    wire hold_release_soft_w = (hold_release_soft_cnt != 3'd0);
     wire hold_release_apply_w = hold_release_soft_w || just_released_hold_w;
     wire [6:0] duty_after_soft_w =
         (duty_final_w > HOLD_RELEASE_DUTY_MAX) ? HOLD_RELEASE_DUTY_MAX : duty_final_w;
@@ -278,7 +278,7 @@ module pid
             hold_prev_reg <= 1'b0;
             dir_prev_reg <= 1'b0;
             dir_stable_cnt <= 2'd0;
-            hold_release_soft_cnt <= 2'd0;
+            hold_release_soft_cnt <= 3'd0;
 
             pwm_duty    <= 16'd0;
             dir         <= 1'b0;
@@ -455,8 +455,8 @@ module pid
                     // ramps back in smoothly.
                     if (just_released_hold_w)
                         hold_release_soft_cnt <= HOLD_RELEASE_SOFT_CYCLES;
-                    else if (hold_release_soft_cnt != 2'd0)
-                        hold_release_soft_cnt <= hold_release_soft_cnt - 2'd1;
+                    else if (hold_release_soft_cnt != 3'd0)
+                        hold_release_soft_cnt <= hold_release_soft_cnt - 3'd1;
 
                     // Track whether the requested direction has stayed stable.
                     // Boost is armed only after the command stops dithering.
