@@ -187,7 +187,7 @@ module pid
     wire [6:0] duty_mid_w =
         7'd24 + (mid_delta_w >> 10);
     wire [6:0] duty_large_w =
-        7'd54 + (large_delta_w >> 6);
+        7'd52 + (large_delta_w >> 6);
     wire [6:0] duty_piecewise_w =
         (pid_out_abs_reg <= MAP_SMALL_THR) ? duty_small_w :
         (pid_out_abs_reg <= MAP_MID_THR)   ? duty_mid_w   :
