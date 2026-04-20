@@ -6,8 +6,10 @@
 // - 출력 형식:
 //   AX=+DDDDD AY=+DDDDD AZ=+DDDDD GX=+DDDDD GY=+DDDDD GZ=+DDDDD AN=+DDDDD
 //   KP=DDDDD KI=DDDDD KD=DDDDD SP=+DDDDD VA=+DDDDD VB=+DDDDD EA=+DDDDD EB=+DDDDD\r\n
-
-//   KP=DDDDD KI=DDDDD KD=DDDDD SP=+DDDDD OF=+DDDDD VA=+DDDDD VB=+DDDDD EA=+DDDDD EB=+DDDDD\r\n
+// - 디버그 suffix 해석:
+//   ABS = offset 적용 전 angle_abs
+//   OF  = S로 캡처한 angle_offset
+//   AN  = angle_abs - angle_offset
 //==============================================================================
 
 module mpu6050_debug_uart
@@ -25,12 +27,26 @@ module mpu6050_debug_uart
     input  wire signed [15:0] gyro_z,
 
     input  wire signed [15:0] angle,
+    input  wire signed [15:0] angle_abs,
     input  wire        [15:0] kp,
     input  wire        [15:0] ki,
     input  wire        [15:0] kd,
     input  wire signed [15:0] setpoint,
     //추가
     input  wire signed [15:0] angle_offset,
+    input  wire        [15:0] pwm_duty,
+    input  wire               pid_dir,
+    input  wire               motor_drive_active,
+    input  wire signed [15:0] pid_out,
+    input  wire        [6:0]  motor_duty,
+    input  wire               sat_flag,
+    input  wire               active_min_applied,
+    input  wire               stby_state,
+    input  wire               boost_active,
+    input  wire        [1:0]  motor_dir_a,
+    input  wire        [1:0]  motor_dir_b,
+    input  wire               s_capture_req,
+    input  wire               s_capture_ok,
 
 
 
@@ -248,9 +264,11 @@ module mpu6050_debug_uart
         ST_TX_OF_D3 = 9'd317, ST_W_OF_D3 = 9'd318,
         ST_TX_OF_D2 = 9'd319, ST_W_OF_D2 = 9'd320,
         ST_TX_OF_D1 = 9'd321, ST_W_OF_D1 = 9'd322,
-        ST_TX_OF_D0 = 9'd323, ST_W_OF_D0 = 9'd324;
+        ST_TX_OF_D0 = 9'd323, ST_W_OF_D0 = 9'd324,
+        ST_TX_DBG   = 9'd325, ST_W_DBG   = 9'd326;
 
     reg [8:0] state;
+    reg [6:0] dbg_idx;
 
     //--------------------------------------------------------------------------
     // UART 송신기
@@ -354,6 +372,22 @@ module mpu6050_debug_uart
     reg [15:0] t_va, t_vb;
     reg [16:0] t_ea, t_eb;  // 17-bit: 최대 99999 저장
 
+    reg [7:0]  abs_sg; reg [3:0] abs_d4, abs_d3, abs_d2, abs_d1, abs_d0;
+    reg [3:0]  du_d4, du_d3, du_d2, du_d1, du_d0;
+    reg [3:0]  md_d4, md_d3, md_d2, md_d1, md_d0;
+    reg [7:0]  po_sg;  reg [3:0] po_d4, po_d3, po_d2, po_d1, po_d0;
+    reg        dr_dbg;
+    reg        en_dbg;
+    reg        sat_dbg;
+    reg        act_dbg;
+    reg        sb_dbg;
+    reg        bst_dbg;
+    reg [1:0]  da_dbg;
+    reg [1:0]  db_dbg;
+    reg        sr_dbg;
+    reg        sc_dbg;
+    reg [15:0] t_abs, t_du, t_md, t_po;
+
     // 엔코더 위치 절댓값 (조합 논리)
     wire [31:0] pos_a_abs = pos_a[31] ? (~pos_a + 32'd1) : pos_a;
     wire [31:0] pos_b_abs = pos_b[31] ? (~pos_b + 32'd1) : pos_b;
@@ -365,6 +399,107 @@ module mpu6050_debug_uart
         input [3:0] d;
         begin
             d2a = {4'b0011, d};
+        end
+    endfunction
+
+    function [7:0] dbg_char;
+        input [6:0] idx;
+        begin
+            case (idx)
+                7'd0:  dbg_char = " ";
+                7'd1:  dbg_char = "A";
+                7'd2:  dbg_char = "B";
+                7'd3:  dbg_char = "S";
+                7'd4:  dbg_char = "=";
+                7'd5:  dbg_char = abs_sg;
+                7'd6:  dbg_char = d2a(abs_d4);
+                7'd7:  dbg_char = d2a(abs_d3);
+                7'd8:  dbg_char = d2a(abs_d2);
+                7'd9:  dbg_char = d2a(abs_d1);
+                7'd10: dbg_char = d2a(abs_d0);
+                7'd11: dbg_char = " ";
+                7'd12: dbg_char = "D";
+                7'd13: dbg_char = "U";
+                7'd14: dbg_char = "=";
+                7'd15: dbg_char = d2a(du_d4);
+                7'd16: dbg_char = d2a(du_d3);
+                7'd17: dbg_char = d2a(du_d2);
+                7'd18: dbg_char = d2a(du_d1);
+                7'd19: dbg_char = d2a(du_d0);
+                7'd20: dbg_char = " ";
+                7'd21: dbg_char = "M";
+                7'd22: dbg_char = "D";
+                7'd23: dbg_char = "=";
+                7'd24: dbg_char = d2a(md_d4);
+                7'd25: dbg_char = d2a(md_d3);
+                7'd26: dbg_char = d2a(md_d2);
+                7'd27: dbg_char = d2a(md_d1);
+                7'd28: dbg_char = d2a(md_d0);
+                7'd29: dbg_char = " ";
+                7'd30: dbg_char = "D";
+                7'd31: dbg_char = "R";
+                7'd32: dbg_char = "=";
+                7'd33: dbg_char = dr_dbg ? "1" : "0";
+                7'd34: dbg_char = " ";
+                7'd35: dbg_char = "E";
+                7'd36: dbg_char = "N";
+                7'd37: dbg_char = "=";
+                7'd38: dbg_char = en_dbg ? "1" : "0";
+                7'd39: dbg_char = " ";
+                7'd40: dbg_char = "P";
+                7'd41: dbg_char = "O";
+                7'd42: dbg_char = "=";
+                7'd43: dbg_char = po_sg;
+                7'd44: dbg_char = d2a(po_d4);
+                7'd45: dbg_char = d2a(po_d3);
+                7'd46: dbg_char = d2a(po_d2);
+                7'd47: dbg_char = d2a(po_d1);
+                7'd48: dbg_char = d2a(po_d0);
+                7'd49: dbg_char = " ";
+                7'd50: dbg_char = "S";
+                7'd51: dbg_char = "A";
+                7'd52: dbg_char = "T";
+                7'd53: dbg_char = "=";
+                7'd54: dbg_char = sat_dbg ? "1" : "0";
+                7'd55: dbg_char = " ";
+                7'd56: dbg_char = "A";
+                7'd57: dbg_char = "C";
+                7'd58: dbg_char = "T";
+                7'd59: dbg_char = "=";
+                7'd60: dbg_char = act_dbg ? "1" : "0";
+                7'd61: dbg_char = " ";
+                7'd62: dbg_char = "S";
+                7'd63: dbg_char = "B";
+                7'd64: dbg_char = "=";
+                7'd65: dbg_char = sb_dbg ? "1" : "0";
+                7'd66: dbg_char = " ";
+                7'd67: dbg_char = "B";
+                7'd68: dbg_char = "S";
+                7'd69: dbg_char = "T";
+                7'd70: dbg_char = "=";
+                7'd71: dbg_char = bst_dbg ? "1" : "0";
+                7'd72: dbg_char = " ";
+                7'd73: dbg_char = "D";
+                7'd74: dbg_char = "A";
+                7'd75: dbg_char = "=";
+                7'd76: dbg_char = d2a({2'b00, da_dbg});
+                7'd77: dbg_char = " ";
+                7'd78: dbg_char = "D";
+                7'd79: dbg_char = "B";
+                7'd80: dbg_char = "=";
+                7'd81: dbg_char = d2a({2'b00, db_dbg});
+                7'd82: dbg_char = " ";
+                7'd83: dbg_char = "S";
+                7'd84: dbg_char = "R";
+                7'd85: dbg_char = "=";
+                7'd86: dbg_char = sr_dbg ? "1" : "0";
+                7'd87: dbg_char = " ";
+                7'd88: dbg_char = "S";
+                7'd89: dbg_char = "C";
+                7'd90: dbg_char = "=";
+                7'd91: dbg_char = sc_dbg ? "1" : "0";
+                default: dbg_char = 8'h00;
+            endcase
         end
     endfunction
 
@@ -398,6 +533,17 @@ module mpu6050_debug_uart
             t_ax <= 0; t_ay <= 0; t_az <= 0; t_gx <= 0; t_gy <= 0; t_gz <= 0; t_an <= 0;
             t_kp <= 0; t_ki <= 0; t_kd <= 0; t_sp <= 0; t_of <= 0;// 추가
             t_va <= 0; t_vb <= 0; t_ea <= 0; t_eb <= 0;
+            abs_sg <= "+"; abs_d4 <= 0; abs_d3 <= 0; abs_d2 <= 0; abs_d1 <= 0; abs_d0 <= 0;
+            du_d4 <= 0; du_d3 <= 0; du_d2 <= 0; du_d1 <= 0; du_d0 <= 0;
+            md_d4 <= 0; md_d3 <= 0; md_d2 <= 0; md_d1 <= 0; md_d0 <= 0;
+            po_sg <= "+"; po_d4 <= 0; po_d3 <= 0; po_d2 <= 0; po_d1 <= 0; po_d0 <= 0;
+            dr_dbg <= 1'b0; en_dbg <= 1'b0; sat_dbg <= 1'b0; act_dbg <= 1'b0;
+            sb_dbg <= 1'b0; bst_dbg <= 1'b0;
+            da_dbg <= 2'd0; db_dbg <= 2'd0;
+            sr_dbg <= 1'b0;
+            sc_dbg <= 1'b0;
+            t_abs <= 0; t_du <= 0; t_md <= 0; t_po <= 0;
+            dbg_idx <= 7'd0;
 
             state <= ST_IDLE;
         end
@@ -449,6 +595,24 @@ module mpu6050_debug_uart
                     t_ea <= (pos_a_abs > 32'd99999) ? 17'd99999 : pos_a_abs[16:0];
                     t_eb <= (pos_b_abs > 32'd99999) ? 17'd99999 : pos_b_abs[16:0];
 
+                    abs_sg <= angle_abs[15] ? "-" : "+";
+                    t_abs <= angle_abs[15] ? (~angle_abs + 16'd1) : angle_abs;
+                    t_du <= pwm_duty;
+                    t_md <= {9'd0, motor_duty};
+                    po_sg <= pid_out[15] ? "-" : "+";
+                    t_po <= pid_out[15] ? (~pid_out + 16'd1) : pid_out;
+                    dr_dbg <= pid_dir;
+                    en_dbg <= motor_drive_active;
+                    sat_dbg <= sat_flag;
+                    act_dbg <= active_min_applied;
+                    sb_dbg <= stby_state;
+                    bst_dbg <= boost_active;
+                    da_dbg <= motor_dir_a;
+                    db_dbg <= motor_dir_b;
+                    sr_dbg <= s_capture_req;
+                    sc_dbg <= s_capture_ok;
+                    dbg_idx <= 7'd0;
+
                     // 자릿수 초기화
                     ax_d4<=0; ax_d3<=0; ax_d2<=0; ax_d1<=0; ax_d0<=0;
                     ay_d4<=0; ay_d3<=0; ay_d2<=0; ay_d1<=0; ay_d0<=0;
@@ -468,6 +632,10 @@ module mpu6050_debug_uart
                     vb_d4<=0; vb_d3<=0; vb_d2<=0; vb_d1<=0; vb_d0<=0;
                     ea_d4<=0; ea_d3<=0; ea_d2<=0; ea_d1<=0; ea_d0<=0;
                     eb_d4<=0; eb_d3<=0; eb_d2<=0; eb_d1<=0; eb_d0<=0;
+                    abs_d4<=0; abs_d3<=0; abs_d2<=0; abs_d1<=0; abs_d0<=0;
+                    du_d4<=0; du_d3<=0; du_d2<=0; du_d1<=0; du_d0<=0;
+                    md_d4<=0; md_d3<=0; md_d2<=0; md_d1<=0; md_d0<=0;
+                    po_d4<=0; po_d3<=0; po_d2<=0; po_d1<=0; po_d0<=0;
 
                     state <= ST_CALC_10000;
                 end
@@ -475,7 +643,8 @@ module mpu6050_debug_uart
                 ST_CALC_10000: begin
                     if (t_ax>=10000||t_ay>=10000||t_az>=10000||t_gx>=10000||t_gy>=10000||t_gz>=10000||
                         t_an>=10000||t_kp>=10000||t_ki>=10000||t_kd>=10000||t_sp>=10000||t_of>=10000||
-                        t_va>=10000||t_vb>=10000||t_ea>=10000||t_eb>=10000) begin
+                        t_va>=10000||t_vb>=10000||t_ea>=10000||t_eb>=10000||
+                        t_abs>=10000||t_du>=10000||t_md>=10000||t_po>=10000) begin
                         if (t_ax>=10000) begin t_ax<=t_ax-10000; ax_d4<=ax_d4+4'd1; end
                         if (t_ay>=10000) begin t_ay<=t_ay-10000; ay_d4<=ay_d4+4'd1; end
                         if (t_az>=10000) begin t_az<=t_az-10000; az_d4<=az_d4+4'd1; end
@@ -493,13 +662,18 @@ module mpu6050_debug_uart
                         if (t_vb>=10000) begin t_vb<=t_vb-10000; vb_d4<=vb_d4+4'd1; end
                         if (t_ea>=10000) begin t_ea<=t_ea-10000; ea_d4<=ea_d4+4'd1; end
                         if (t_eb>=10000) begin t_eb<=t_eb-10000; eb_d4<=eb_d4+4'd1; end
+                        if (t_abs>=10000) begin t_abs<=t_abs-10000; abs_d4<=abs_d4+4'd1; end
+                        if (t_du>=10000) begin t_du<=t_du-10000; du_d4<=du_d4+4'd1; end
+                        if (t_md>=10000) begin t_md<=t_md-10000; md_d4<=md_d4+4'd1; end
+                        if (t_po>=10000) begin t_po<=t_po-10000; po_d4<=po_d4+4'd1; end
                     end else state <= ST_CALC_1000;
                 end
 
                 ST_CALC_1000: begin
                     if (t_ax>=1000||t_ay>=1000||t_az>=1000||t_gx>=1000||t_gy>=1000||t_gz>=1000||
                         t_an>=1000||t_kp>=1000||t_ki>=1000||t_kd>=1000||t_sp>=1000||t_of>=1000||
-                        t_va>=1000||t_vb>=1000||t_ea>=1000||t_eb>=1000) begin
+                        t_va>=1000||t_vb>=1000||t_ea>=1000||t_eb>=1000||
+                        t_abs>=1000||t_du>=1000||t_md>=1000||t_po>=1000) begin
                         if (t_ax>=1000) begin t_ax<=t_ax-1000; ax_d3<=ax_d3+4'd1; end
                         if (t_ay>=1000) begin t_ay<=t_ay-1000; ay_d3<=ay_d3+4'd1; end
                         if (t_az>=1000) begin t_az<=t_az-1000; az_d3<=az_d3+4'd1; end
@@ -518,13 +692,18 @@ module mpu6050_debug_uart
                         if (t_vb>=1000) begin t_vb<=t_vb-1000; vb_d3<=vb_d3+4'd1; end
                         if (t_ea>=1000) begin t_ea<=t_ea-1000; ea_d3<=ea_d3+4'd1; end
                         if (t_eb>=1000) begin t_eb<=t_eb-1000; eb_d3<=eb_d3+4'd1; end
+                        if (t_abs>=1000) begin t_abs<=t_abs-1000; abs_d3<=abs_d3+4'd1; end
+                        if (t_du>=1000) begin t_du<=t_du-1000; du_d3<=du_d3+4'd1; end
+                        if (t_md>=1000) begin t_md<=t_md-1000; md_d3<=md_d3+4'd1; end
+                        if (t_po>=1000) begin t_po<=t_po-1000; po_d3<=po_d3+4'd1; end
                     end else state <= ST_CALC_100;
                 end
 
                 ST_CALC_100: begin
                     if (t_ax>=100||t_ay>=100||t_az>=100||t_gx>=100||t_gy>=100||t_gz>=100||
                         t_an>=100||t_kp>=100||t_ki>=100||t_kd>=100||t_sp>=100||t_of>=100||
-                        t_va>=100||t_vb>=100||t_ea>=100||t_eb>=100) begin
+                        t_va>=100||t_vb>=100||t_ea>=100||t_eb>=100||
+                        t_abs>=100||t_du>=100||t_md>=100||t_po>=100) begin
                         if (t_ax>=100) begin t_ax<=t_ax-100; ax_d2<=ax_d2+4'd1; end
                         if (t_ay>=100) begin t_ay<=t_ay-100; ay_d2<=ay_d2+4'd1; end
                         if (t_az>=100) begin t_az<=t_az-100; az_d2<=az_d2+4'd1; end
@@ -543,13 +722,18 @@ module mpu6050_debug_uart
                         if (t_vb>=100) begin t_vb<=t_vb-100; vb_d2<=vb_d2+4'd1; end
                         if (t_ea>=100) begin t_ea<=t_ea-100; ea_d2<=ea_d2+4'd1; end
                         if (t_eb>=100) begin t_eb<=t_eb-100; eb_d2<=eb_d2+4'd1; end
+                        if (t_abs>=100) begin t_abs<=t_abs-100; abs_d2<=abs_d2+4'd1; end
+                        if (t_du>=100) begin t_du<=t_du-100; du_d2<=du_d2+4'd1; end
+                        if (t_md>=100) begin t_md<=t_md-100; md_d2<=md_d2+4'd1; end
+                        if (t_po>=100) begin t_po<=t_po-100; po_d2<=po_d2+4'd1; end
                     end else state <= ST_CALC_10;
                 end
 
                 ST_CALC_10: begin
                     if (t_ax>=10||t_ay>=10||t_az>=10||t_gx>=10||t_gy>=10||t_gz>=10||
                         t_an>=10||t_kp>=10||t_ki>=10||t_kd>=10||t_sp>=10||t_of>=10||
-                        t_va>=10||t_vb>=10||t_ea>=10||t_eb>=10) begin
+                        t_va>=10||t_vb>=10||t_ea>=10||t_eb>=10||
+                        t_abs>=10||t_du>=10||t_md>=10||t_po>=10) begin
                         if (t_ax>=10) begin t_ax<=t_ax-10; ax_d1<=ax_d1+4'd1; end
                         if (t_ay>=10) begin t_ay<=t_ay-10; ay_d1<=ay_d1+4'd1; end
                         if (t_az>=10) begin t_az<=t_az-10; az_d1<=az_d1+4'd1; end
@@ -568,6 +752,10 @@ module mpu6050_debug_uart
                         if (t_vb>=10) begin t_vb<=t_vb-10; vb_d1<=vb_d1+4'd1; end
                         if (t_ea>=10) begin t_ea<=t_ea-10; ea_d1<=ea_d1+4'd1; end
                         if (t_eb>=10) begin t_eb<=t_eb-10; eb_d1<=eb_d1+4'd1; end
+                        if (t_abs>=10) begin t_abs<=t_abs-10; abs_d1<=abs_d1+4'd1; end
+                        if (t_du>=10) begin t_du<=t_du-10; du_d1<=du_d1+4'd1; end
+                        if (t_md>=10) begin t_md<=t_md-10; md_d1<=md_d1+4'd1; end
+                        if (t_po>=10) begin t_po<=t_po-10; po_d1<=po_d1+4'd1; end
                     end else state <= ST_CALC_1;
                 end
 
@@ -582,6 +770,8 @@ module mpu6050_debug_uart
                     
                     va_d0<=t_va[3:0]; vb_d0<=t_vb[3:0];
                     ea_d0<=t_ea[3:0]; eb_d0<=t_eb[3:0];
+                    abs_d0<=t_abs[3:0]; du_d0<=t_du[3:0];
+                    md_d0<=t_md[3:0]; po_d0<=t_po[3:0];
                     state <= ST_TX_AX_L1;
                 end
 
@@ -840,7 +1030,25 @@ module mpu6050_debug_uart
                 ST_TX_OF_D1: begin if (!tx_busy_r) begin tx_data<=d2a(of_d1); tx_start<=1'b1; state<=ST_W_OF_D1; end end
                 ST_W_OF_D1:  begin if (tx_done) state<=ST_TX_OF_D0; end
                 ST_TX_OF_D0: begin if (!tx_busy_r) begin tx_data<=d2a(of_d0); tx_start<=1'b1; state<=ST_W_OF_D0; end end
-                ST_W_OF_D0:  begin if (tx_done) state<=ST_TX_CR; end        
+                ST_W_OF_D0:  begin if (tx_done) state<=ST_TX_DBG; end
+
+                ST_TX_DBG: begin
+                    if (!tx_busy_r) begin
+                        tx_data <= dbg_char(dbg_idx);
+                        tx_start <= 1'b1;
+                        state <= ST_W_DBG;
+                    end
+                end
+                ST_W_DBG: begin
+                    if (tx_done) begin
+                        if (dbg_idx == 7'd91)
+                            state <= ST_TX_CR;
+                        else begin
+                            dbg_idx <= dbg_idx + 7'd1;
+                            state <= ST_TX_DBG;
+                        end
+                    end
+                end
 
                 // ------ VA (엔코더 속도 A) ------
                 ST_TX_VA_SP: begin if (!tx_busy_r) begin tx_data<=" "; tx_start<=1'b1; state<=ST_W_VA_SP; end end
