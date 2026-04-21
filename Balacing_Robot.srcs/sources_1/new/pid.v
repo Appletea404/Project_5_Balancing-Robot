@@ -40,14 +40,14 @@ module pid
     parameter signed [31:0] I_MIN      = -32'sd500000;
     // Tune these against the actual JGB37-520 drivetrain.
     parameter [6:0] DUTY_ACTIVE_MIN    = 7'd20;
-    parameter [6:0] DUTY_MAX_MOTOR     = 7'd80;
+    parameter [6:0] DUTY_MAX_MOTOR     = 7'd75;
     parameter signed [31:0] OUT_DEAD   = 32'sd4;
     parameter signed [15:0] GYRO_D_DEAD = 16'sd96;
     parameter signed [15:0] GYRO_D_LIM  = 16'sd1024;
     parameter signed [15:0] PID_OUT_CLAMP = 16'sd900;
     parameter signed [31:0] D_TERM_SUM_CLAMP = 32'sd30720;
     parameter signed [15:0] MAP_SMALL_THR = 16'sd160;
-    parameter signed [15:0] MAP_MID_THR   = 16'sd240;
+    parameter signed [15:0] MAP_MID_THR   = 16'sd260;
     parameter signed [15:0] SMALL_MIN_OUT_THR = 16'sd56;
     // Center-hold lock state:
     // once the robot is both near upright and nearly stationary, force the
@@ -185,9 +185,9 @@ module pid
     // - mid   : smooth practical recovery
     // - large : strong recovery without an immediate jump to max duty
     wire [6:0] duty_mid_w =
-        7'd26 + (mid_delta_w >> 9);
+        7'd24 + (mid_delta_w >> 10);
     wire [6:0] duty_large_w =
-        7'd58 + (large_delta_w >> 5);
+        7'd52 + (large_delta_w >> 6);
     wire [6:0] duty_piecewise_w =
         (pid_out_abs_reg <= MAP_SMALL_THR) ? duty_small_w :
         (pid_out_abs_reg <= MAP_MID_THR)   ? duty_mid_w   :
