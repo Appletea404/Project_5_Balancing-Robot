@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balancing Robot — 리팩토링 분석 보고서</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --text: #d4d8ef;
+    --text-dim: #7a82a6;
+    --accent: #5c7cfa;
+    --accent2: #748ffc;
+    --red: #ff6b6b;
+    --orange: #ffa94d;
+    --yellow: #ffe066;
+    --green: #69db7c;
+    --teal: #38d9a9;
+    --purple: #cc5de8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg, #1a1d27 0%, #12152a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 32px 40px 24px;
+  }
+  header h1 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  header .subtitle { color: var(--text-dim); font-size: 13px; }
+  header .meta { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text-dim);
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-red    { background: var(--red); }
+  .dot-orange { background: var(--orange); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-green  { background: var(--green); }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 32px 40px 80px; }
+
+  /* ── SUMMARY CARDS ── */
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px; margin-bottom: 40px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px;
+  }
+  .card .num { font-size: 36px; font-weight: 800; line-height: 1; }
+  .card .label { color: var(--text-dim); font-size: 12px; margin-top: 6px; }
+  .num-red    { color: var(--red); }
+  .num-orange { color: var(--orange); }
+  .num-yellow { color: var(--yellow); }
+  .num-green  { color: var(--green); }
+
+  /* ── SECTION ── */
+  section { margin-bottom: 48px; }
+  section > h2 {
+    font-size: 16px; font-weight: 700; color: #fff;
+    border-left: 3px solid var(--accent); padding-left: 12px;
+    margin-bottom: 20px;
+  }
+
+  /* ── ISSUE CARD ── */
+  .issue {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; margin-bottom: 16px; overflow: hidden;
+  }
+  .issue-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  .issue-header:hover { background: var(--surface2); }
+  .priority-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 9px;
+    border-radius: 4px; letter-spacing: 0.5px; flex-shrink: 0;
+  }
+  .priority-high   { background: rgba(255,107,107,.18); color: var(--red);    border: 1px solid rgba(255,107,107,.4); }
+  .priority-medium { background: rgba(255,169,77,.18);  color: var(--orange); border: 1px solid rgba(255,169,77,.4); }
+  .priority-low    { background: rgba(255,224,102,.15); color: var(--yellow); border: 1px solid rgba(255,224,102,.4); }
+  .category-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .issue-title { font-weight: 600; flex: 1; }
+  .file-tag { font-size: 12px; color: var(--accent2); font-family: monospace; margin-left: auto; flex-shrink: 0; }
+  .toggle-icon { color: var(--text-dim); font-size: 12px; transition: transform 0.2s; }
+  .issue-body { padding: 16px 18px; display: none; }
+  .issue-body.open { display: block; }
+
+  .desc { color: var(--text-dim); margin-bottom: 14px; font-size: 13px; }
+  .sub-title { font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+
+  pre {
+    background: #0c0e18; border: 1px solid var(--border);
+    border-radius: 7px; padding: 14px 16px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 12px; line-height: 1.7; overflow-x: auto;
+    margin-bottom: 14px;
+  }
+  .line-dead { color: #ff6b6b; text-decoration: line-through; opacity: 0.6; }
+  .line-keep { color: #d4d8ef; }
+  .line-new  { color: var(--green); }
+  .line-note { color: var(--text-dim); font-style: italic; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  .col-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 5px 10px; border-radius: 4px 4px 0 0; margin-bottom: -1px;
+  }
+  .col-label-before { background: rgba(255,107,107,.15); color: var(--red); }
+  .col-label-after  { background: rgba(105,219,124,.15); color: var(--green); }
+
+  .action-list { list-style: none; padding: 0; }
+  .action-list li {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .action-list li:last-child { border-bottom: none; }
+  .action-list li::before { content: '→'; color: var(--accent2); flex-shrink: 0; }
+
+  .risk-box {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 14px; margin-top: 12px; font-size: 13px;
+  }
+  .risk-box .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── FILE MAP ── */
+  .file-map { display: flex; flex-direction: column; gap: 10px; }
+  .file-row {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px;
+  }
+  .file-name { font-family: monospace; font-size: 13px; width: 220px; flex-shrink: 0; }
+  .file-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+  .file-bar { height: 100%; border-radius: 4px; }
+  .bar-clean  { background: var(--green); }
+  .bar-dead   { background: var(--red); }
+  .bar-zero   { background: var(--yellow); }
+  .file-stat { font-size: 12px; color: var(--text-dim); width: 80px; text-align: right; flex-shrink: 0; }
+  .file-issues { display: flex; gap: 6px; flex-wrap: wrap; }
+  .file-issue-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    title: attr(title);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Balancing Robot — 리팩토링 분석 보고서</h1>
+  <div class="subtitle">Basys3 FPGA · Verilog HDL · 브랜치: dongwon · 2026-04-21</div>
+  <div class="meta">
+    <span class="badge"><span class="dot dot-red"></span>High 우선순위 3건</span>
+    <span class="badge"><span class="dot dot-orange"></span>Medium 우선순위 2건</span>
+    <span class="badge"><span class="dot dot-yellow"></span>Low 우선순위 2건</span>
+    <span class="badge"><span class="dot dot-green"></span>정상 모듈 8개</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- SUMMARY CARDS -->
+  <div class="summary-grid">
+    <div class="card">
+      <div class="num num-red">53</div>
+      <div class="label">주석처리된 dead 코드 라인<br>(삭제 권장)</div>
+    </div>
+    <div class="card">
+      <div class="num num-orange">6</div>
+      <div class="label">할당됐지만 미사용 신호<br>(top.v 방향 지시자)</div>
+    </div>
+    <div class="card">
+      <div class="num num-yellow">3</div>
+      <div class="label">항상 0인 런타임 dead 경로<br>(pid.v 속도 댐핑)</div>
+    </div>
+    <div class="card">
+      <div class="num num-green">8</div>
+      <div class="label">정상 동작 모듈<br>(수정 불필요)</div>
+    </div>
+  </div>
+
+  <!-- FILE MAP -->
+  <section>
+    <h2>파일별 상태 요약</h2>
+    <div class="file-map">
+
+      <div class="file-row">
+        <div class="file-name">uart_bluetooth.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-dead" style="width:25%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">주석 dead code 53줄 (전체의 ~25%)</div>
+        </div>
+        <div class="file-stat" style="color:var(--red)">HIGH</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">top.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-dead" style="width:8%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">미사용 신호 8개 (dir_* ×6, last_err, rx_data)</div>
+        </div>
+        <div class="file-stat" style="color:var(--red)">HIGH</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">pid.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-zero" style="width:15%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">KV_DAMP=0 → 속도 댐핑 경로 항상 0 (런타임 dead)</div>
+        </div>
+        <div class="file-stat" style="color:var(--orange)">MEDIUM</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">angle_calc.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-dead" style="width:10%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">수정 전 주석 블록 9줄</div>
+        </div>
+        <div class="file-stat" style="color:var(--yellow)">LOW</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">i2c_master.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-clean" style="width:100%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">정상 — 수정 불필요</div>
+        </div>
+        <div class="file-stat" style="color:var(--green)">CLEAN</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">mpu6050_ctrl.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-clean" style="width:100%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">정상 — 수정 불필요</div>
+        </div>
+        <div class="file-stat" style="color:var(--green)">CLEAN</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">mpu6050_debug_uart.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-clean" style="width:100%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">정상 — 수정 불필요</div>
+        </div>
+        <div class="file-stat" style="color:var(--green)">CLEAN</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">TB6612FNG.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-clean" style="width:100%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">정상 — 수정 불필요</div>
+        </div>
+        <div class="file-stat" style="color:var(--green)">CLEAN</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">encoder.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-clean" style="width:100%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">정상 — 수정 불필요</div>
+        </div>
+        <div class="file-stat" style="color:var(--green)">CLEAN</div>
+      </div>
+
+      <div class="file-row">
+        <div class="file-name">clk_divider.v</div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+          <div class="file-bar-wrap"><div class="file-bar bar-clean" style="width:100%"></div></div>
+          <div style="font-size:11px; color:var(--text-dim)">정상 — 수정 불필요</div>
+        </div>
+        <div class="file-stat" style="color:var(--green)">CLEAN</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ISSUES -->
+  <section>
+    <h2>상세 이슈 목록</h2>
+
+    <!-- ISSUE 1 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-high">HIGH</span>
+        <span class="category-tag">주석 dead code</span>
+        <span class="issue-title">uart_bluetooth 최상위 모듈 전체 주석 처리 (53줄)</span>
+        <span class="file-tag">uart_bluetooth.v : 4–56</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          파일 상단에 원래 블루투스 echo 모듈(<code>uart_bluetooth</code>) 전체가
+          <code>//</code> 주석으로 막혀 있습니다. 현재 이 모듈은 어디서도 인스턴스화되지
+          않으며, 실제로 사용 중인 모듈은 그 아래의 <code>baud_rate</code> / <code>uart_tx</code>
+          / <code>uart_rx</code> 세 개입니다. 주석 블록이 53줄을 차지해 파일 가독성을 크게
+          저해합니다.
+        </p>
+
+        <div class="sub-title">현재 코드 (uart_bluetooth.v, 4–56줄)</div>
+        <pre><span class="line-dead">// module uart_bluetooth(</span>
+<span class="line-dead">//     input  clk,</span>
+<span class="line-dead">//     input  reset,</span>
+<span class="line-dead">//     input  rx_pin,</span>
+<span class="line-dead">//     output tx_pin</span>
+<span class="line-dead">// );</span>
+<span class="line-dead">//     wire        b_tick;</span>
+<span class="line-dead">//     wire [7:0]  rx_data;</span>
+<span class="line-dead">//     wire        rx_done;</span>
+<span class="line-dead">// ...  (53줄 전체 삭제 대상)</span>
+<span class="line-dead">// endmodule</span>
+<span class="line-note">// ────── 이 아래부터가 실제 사용 중인 코드 ──────</span>
+<span class="line-keep">module baud_rate ( ... );</span>
+<span class="line-keep">module uart_tx   ( ... );</span>
+<span class="line-keep">module uart_rx   ( ... );</span></pre>
+
+        <div class="sub-title">조치</div>
+        <ul class="action-list">
+          <li>라인 4~56 전체(주석 처리된 <code>uart_bluetooth</code> 모듈) 삭제</li>
+          <li>파일 맨 위에 파일 용도 한 줄 주석 추가 권장:<br>
+            <code style="color:var(--green)">// UART primitives: baud_rate, uart_tx, uart_rx</code></li>
+        </ul>
+
+        <div class="risk-box">
+          <span class="icon">✅</span>
+          <span><strong>리스크 없음.</strong> 주석 코드는 합성·시뮬레이션에 영향을 주지 않습니다. 삭제해도 동작 변화 전혀 없습니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ISSUE 2 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-high">HIGH</span>
+        <span class="category-tag">미사용 신호</span>
+        <span class="issue-title">방향 지시자 6개 — 계산 후 버려짐</span>
+        <span class="file-tag">top.v : 313–318, 436–441</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          <code>dir_front</code>, <code>dir_back</code>, <code>dir_left</code>,
+          <code>dir_right</code>, <code>dir_up</code>, <code>dir_down</code> 6개 신호는
+          <code>ax_corr</code> / <code>ay_corr</code> / <code>az_corr</code>에서 계산되지만
+          <strong>어떤 출력 포트에도, 어떤 서브모듈에도 연결되어 있지 않습니다.</strong>
+          Vivado는 이들을 모두 최적화로 제거하지만, 코드에는 남아 혼란을 줍니다.
+        </p>
+
+        <div class="two-col">
+          <div>
+            <div class="col-label col-label-before">BEFORE — 삭제 대상</div>
+            <pre><span class="line-dead">// top.v: 313~318 선언</span>
+<span class="line-dead">wire dir_front;</span>
+<span class="line-dead">wire dir_back;</span>
+<span class="line-dead">wire dir_left;</span>
+<span class="line-dead">wire dir_right;</span>
+<span class="line-dead">wire dir_up;</span>
+<span class="line-dead">wire dir_down;</span>
+
+<span class="line-dead">// top.v: 436~441 assign</span>
+<span class="line-dead">assign dir_front = (ax_corr >  TILT_TH);</span>
+<span class="line-dead">assign dir_back  = (ax_corr < -TILT_TH);</span>
+<span class="line-dead">assign dir_right = (ay_corr >  TILT_TH);</span>
+<span class="line-dead">assign dir_left  = (ay_corr < -TILT_TH);</span>
+<span class="line-dead">assign dir_up    = (az_corr >  Z_TH);</span>
+<span class="line-dead">assign dir_down  = (az_corr < -Z_TH);</span></pre>
+          </div>
+          <div>
+            <div class="col-label col-label-after">AFTER — 두 가지 선택</div>
+            <pre><span class="line-note">// 선택 A: 완전 삭제 (권장)</span>
+<span class="line-note">// → TILT_TH, Z_TH localparam도</span>
+<span class="line-note">//   함께 삭제 가능</span>
+
+
+<span class="line-note">// 선택 B: LED 출력으로 활용</span>
+<span class="line-new">output wire [5:0] dir_leds, // 포트 추가</span>
+<span class="line-new">assign dir_leds = {dir_front, dir_back,</span>
+<span class="line-new">                   dir_left,  dir_right,</span>
+<span class="line-new">                   dir_up,    dir_down};</span></pre>
+          </div>
+        </div>
+
+        <p style="margin-top:10px; font-size:13px; color:var(--text-dim)">
+          함께 삭제 가능한 <code>localparam</code>:
+          <code>TILT_TH = 16'sd1000</code> (line 310),
+          <code>Z_TH = 16'sd12000</code> (line 311) — dir_* 외에 사용되지 않으면 삭제 가능.
+        </p>
+
+        <div class="risk-box">
+          <span class="icon">✅</span>
+          <span><strong>리스크 없음.</strong> 이 신호들은 어디에도 연결되지 않아 삭제해도 기능 변화 없습니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ISSUE 3 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-high">HIGH</span>
+        <span class="category-tag">미사용 신호</span>
+        <span class="issue-title">last_err wire — mpu6050_ctrl 출력이 top에서 미사용</span>
+        <span class="file-tag">top.v : 112</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          <code>last_err [2:0]</code>는 <code>mpu6050_ctrl</code>의 오류 코드 출력입니다.
+          top.v에 wire로 선언되어 인스턴스 포트에 연결되어 있지만,
+          이후 어떤 로직에도, 어떤 출력에도 사용되지 않습니다.
+          디버그 UART(<code>mpu6050_debug_uart</code>)에도 전달되지 않아 I2C 오류를 확인할 방법이 없습니다.
+        </p>
+
+        <div class="two-col">
+          <div>
+            <div class="col-label col-label-before">BEFORE</div>
+            <pre><span class="line-dead">// 선언: top.v:112</span>
+<span class="line-dead">wire [2:0] last_err;</span>
+
+<span class="line-keep">// mpu6050_ctrl 연결 (top.v:496)
+.last_err   (last_err),</span>
+
+<span class="line-note">// 이후 last_err 사용 없음</span></pre>
+          </div>
+          <div>
+            <div class="col-label col-label-after">AFTER — 두 가지 선택</div>
+            <pre><span class="line-note">// 선택 A: 포트를 open으로 처리</span>
+<span class="line-new">.last_err   (),  // 미사용</span>
+
+
+<span class="line-note">// 선택 B: debug UART로 전달</span>
+<span class="line-keep">wire [2:0] last_err; // 유지</span>
+<span class="line-new">// mpu6050_debug_uart에 포트 추가해서</span>
+<span class="line-new">// I2C 오류를 UART 로그에 출력</span></pre>
+          </div>
+        </div>
+
+        <div class="risk-box">
+          <span class="icon">⚠️</span>
+          <span><strong>기능 리스크 없음.</strong> 다만 <strong>선택 B(debug UART 연결) 권장</strong> — I2C 오류 발생 시 원인 파악이 불가능한 현재 상태를 개선할 수 있습니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ISSUE 4 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-medium">MEDIUM</span>
+        <span class="category-tag">런타임 dead 경로</span>
+        <span class="issue-title">pid.v 속도 댐핑 경로 — KV_DAMP=0으로 항상 dead</span>
+        <span class="file-tag">pid.v : 89–94, 125–126, 163–166, 337–341</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          <code>KV_DAMP = 16'sd0</code>으로 설정되어 있어 속도 댐핑 관련 로직 전체가
+          런타임에 항상 0을 출력합니다. 합성기가 최적화로 제거하지만,
+          <code>v_term_reg</code>, <code>vel_same_dir_reg</code>,
+          <code>v_term_used_w</code> 등의 코드가 남아 읽기 어렵게 만듭니다.
+          댐핑이 의도적으로 꺼진 상태라면 이를 명시적으로 처리하는 것이 좋습니다.
+        </p>
+
+        <div class="sub-title">영향받는 코드 경로</div>
+        <pre><span class="line-note">// pid.v:89 — 항상 0인 상수</span>
+<span class="line-dead">localparam signed [15:0] KV_DAMP = 16'sd0;</span>
+
+<span class="line-note">// pid.v:125~126 — KV_DAMP=0이므로 항상 0</span>
+<span class="line-dead">reg signed [31:0] v_term_reg;   // 항상 0</span>
+
+<span class="line-note">// pid.v:163~166 — 항상 32'sd0 반환</span>
+<span class="line-dead">wire signed [31:0] v_term_used_w =</span>
+<span class="line-dead">    !vel_same_dir_reg ? 32'sd0 :              // 이 분기만 실행됨</span>
+<span class="line-dead">    (error_abs_reg &lt;= VEL_DAMP_FULL_ERR_THR) ? v_term_reg : (v_term_reg &gt;&gt;&gt; 1);</span>
+
+<span class="line-note">// pid.v:337 ST_TERMS — 항상 0 생성</span>
+<span class="line-dead">v_term_reg &lt;= $signed(KV_DAMP) * $signed(vel_abs_reg);  // 0 × vel = 0</span>
+
+<span class="line-note">// pid.v:311 ST_IDLE — vel_same_dir_reg 추적 (항상 무의미)</span>
+<span class="line-dead">vel_same_dir_reg &lt;= ...</span>
+
+<span class="line-note">// pid.v:381 ST_SUM — 항상 -0 == no-op</span>
+<span class="line-keep">pid_sum_reg &lt;= p_term_reg + integral - d_term_shaped_w</span>
+<span class="line-dead">               - v_term_used_w;   // ← 항상 0, 제거 가능</span></pre>
+
+        <div class="sub-title">권장 처리 방법</div>
+        <ul class="action-list">
+          <li><strong>댐핑을 계속 끌 것이라면:</strong> <code>v_term_reg</code>, <code>vel_same_dir_reg</code>, <code>v_term_used_w</code>, ST_TERMS의 v_term 계산, ST_SUM에서 빼는 부분 제거</li>
+          <li><strong>나중에 다시 켤 가능성이 있다면:</strong> <code>KV_DAMP</code>를 파라미터로 승격시키고 <code>generate</code> 블록으로 감싸거나, 주석에 "비활성화됨 — KV_DAMP 조정으로 활성화"를 명시</li>
+        </ul>
+
+        <div class="risk-box">
+          <span class="icon">⚠️</span>
+          <span><strong>주의:</strong> 댐핑 경로를 삭제하면 나중에 다시 추가하려면 코드를 다시 작성해야 합니다. 현재 PD 튜닝이 진행 중이므로 <strong>삭제보다는 `generate` 블록 또는 주석으로 명시하는 방법을 권장</strong>합니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ISSUE 5 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-medium">MEDIUM</span>
+        <span class="category-tag">런타임 dead 경로</span>
+        <span class="issue-title">pid.v 부호 반전 플래그 — 항상 기본값 (passthrough wire)</span>
+        <span class="file-tag">pid.v : 92–93, 149–157</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          <code>VEL_SIGN_INV = 1'b0</code>, <code>GYRO_SIGN_INV = 1'b0</code>으로
+          고정되어 있어 조건부 부호 반전 wire가 단순 passthrough가 됩니다.
+          삼항 연산자가 상수 조건으로 인해 항상 한 방향만 선택되어
+          dead branch가 발생합니다.
+        </p>
+
+        <div class="two-col">
+          <div>
+            <div class="col-label col-label-before">BEFORE (dead branch 포함)</div>
+            <pre><span class="line-keep">localparam VEL_SIGN_INV  = 1'b0; // 항상 false</span>
+<span class="line-keep">localparam GYRO_SIGN_INV = 1'b0; // 항상 false</span>
+
+<span class="line-dead">// 삼항 연산자지만 false 분기 실행 안됨</span>
+<span class="line-dead">wire signed [15:0] gyro_aligned_w =</span>
+<span class="line-dead">    GYRO_SIGN_INV ? -gyro_in : gyro_in;</span>
+<span class="line-dead">wire signed [15:0] vel_aligned_w  =</span>
+<span class="line-dead">    VEL_SIGN_INV  ? -vel_in  : vel_in;</span></pre>
+          </div>
+          <div>
+            <div class="col-label col-label-after">AFTER (단순화)</div>
+            <pre><span class="line-note">// 플래그/중간 wire 모두 제거</span>
+<span class="line-new">// gyro_aligned_w 대신 gyro_in 직접 사용</span>
+<span class="line-new">// vel_aligned_w  대신 vel_in  직접 사용</span>
+
+
+<span class="line-note">// 부호 변경이 필요해지면 top.v에서</span>
+<span class="line-note">// 인스턴스 연결 시 부호 처리하는 것이</span>
+<span class="line-note">// 더 명시적이고 관리하기 편함</span></pre>
+          </div>
+        </div>
+
+        <div class="risk-box">
+          <span class="icon">⚠️</span>
+          <span>실기기 테스트 중 부호 방향 확인이 필요할 수 있으므로, 테스트가 안정화될 때까지 두고 이후 정리하는 것도 합리적입니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ISSUE 6 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-low">LOW</span>
+        <span class="category-tag">주석 dead code</span>
+        <span class="issue-title">angle_calc.v — 수정 전 Stage 1 주석 블록</span>
+        <span class="file-tag">angle_calc.v : 70–82</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          "수정 전" 레이블이 붙은 구 Stage 1 계산 코드(9줄)가 주석으로 남아 있습니다.
+          바로 아래 "수정 후" 코드로 완전히 대체되었습니다.
+          <code>ACCEL_GAIN</code>, <code>GYRO_GAIN</code> localparam이 추가되면서
+          구 코드는 더 이상 의미가 없습니다.
+        </p>
+
+        <pre><span class="line-dead">// 수정 전</span>
+<span class="line-dead">// // [Stage 1] 데이터 수신 및 1차 곱셈 (무거운 연산 먼저 수행)</span>
+<span class="line-dead">// if (data_valid) begin</span>
+<span class="line-dead">//     // 수정 전</span>
+<span class="line-dead">//     // accel_q8_reg &lt;= $signed(accel_x) * 32'sd90;</span>
+<span class="line-dead">//     // 수정 후</span>
+<span class="line-dead">//     accel_q8_reg &lt;= $signed(accel_x) * 32'sd60;</span>
+<span class="line-dead">//     gyro_q8_reg  &lt;= ($signed(gyro_x) * 32'sd500) &gt;&gt;&gt; 8;</span>
+<span class="line-dead">//     calc_step2   &lt;= 1'b1;</span>
+<span class="line-dead">// end</span>
+
+<span class="line-note">// ↓ 이 아래가 실제 사용 코드 (수정 후)</span>
+<span class="line-keep">if (data_valid) begin
+    accel_q8_reg &lt;= $signed(accel_x) * ACCEL_GAIN;
+    gyro_q8_reg  &lt;= ($signed(gyro_x) * GYRO_GAIN) &gt;&gt;&gt; 8;
+    calc_step2   &lt;= 1'b1;
+end</span></pre>
+
+        <div class="risk-box">
+          <span class="icon">✅</span>
+          <span><strong>리스크 없음.</strong> 단순 주석 삭제입니다.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ISSUE 7 -->
+    <div class="issue">
+      <div class="issue-header" onclick="toggle(this)">
+        <span class="priority-badge priority-low">LOW</span>
+        <span class="category-tag">미사용 신호</span>
+        <span class="issue-title">top.v — rx_data wire (i2c_master 출력, top에서 미사용)</span>
+        <span class="file-tag">top.v : 57</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="issue-body">
+        <p class="desc">
+          <code>rx_data [7:0]</code>는 <code>i2c_master</code>가 마지막으로 읽은
+          단일 바이트를 출력하는 포트입니다. top.v에서 연결은 되어 있으나
+          이후 어디서도 사용되지 않습니다. 실제 파싱은 <code>rx_buf [127:0]</code>를
+          통해 <code>mpu6050_ctrl</code>에서 이루어집니다.
+        </p>
+
+        <pre><span class="line-keep">// top.v 선언
+wire [7:0] rx_data;</span>
+
+<span class="line-keep">// i2c_master 연결 — 필요한 포트 연결
+.rx_data  (rx_data),   // ← 연결은 됨</span>
+
+<span class="line-note">// 이후 rx_data 사용 없음 — rx_buf만 사용됨</span></pre>
+
+        <div class="sub-title">조치</div>
+        <ul class="action-list">
+          <li><code>wire [7:0] rx_data;</code> 선언을 유지하거나 포트에 <code>.rx_data()</code>로 open 처리 (Vivado는 미연결 출력 포트를 경고 없이 처리)</li>
+          <li>삭제 시 <code>i2c_master</code> 인스턴스 연결에서 해당 포트를 <code>()</code>로 바꿔야 함</li>
+        </ul>
+
+        <div class="risk-box">
+          <span class="icon">✅</span>
+          <span><strong>리스크 없음.</strong> 단, 나중에 단일 바이트 read가 필요해질 경우 wire를 유지해두는 것도 합리적입니다.</span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- QUICK ACTION TABLE -->
+  <section>
+    <h2>우선순위별 처리 순서</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);">
+          <th style="text-align:left; padding:10px 12px; color:var(--text-dim);">순서</th>
+          <th style="text-align:left; padding:10px 12px; color:var(--text-dim);">파일</th>
+          <th style="text-align:left; padding:10px 12px; color:var(--text-dim);">작업 내용</th>
+          <th style="text-align:left; padding:10px 12px; color:var(--text-dim);">예상 소요</th>
+          <th style="text-align:left; padding:10px 12px; color:var(--text-dim);">합성 재실행</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;"><span class="priority-badge priority-high">1</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">uart_bluetooth.v</td>
+          <td style="padding:10px 12px;">라인 4–56 주석 블록 삭제</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">1분</td>
+          <td style="padding:10px 12px; color:var(--green);">불필요</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;"><span class="priority-badge priority-high">2</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">top.v</td>
+          <td style="padding:10px 12px;">dir_front/back/left/right/up/down 선언+assign 삭제, TILT_TH/Z_TH 삭제</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">5분</td>
+          <td style="padding:10px 12px; color:var(--yellow);">권장 (경고 제거)</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;"><span class="priority-badge priority-high">3</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">top.v</td>
+          <td style="padding:10px 12px;">last_err 처리 결정 (삭제 or debug UART 연결)</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">5분</td>
+          <td style="padding:10px 12px; color:var(--yellow);">권장</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;"><span class="priority-badge priority-medium">4</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">pid.v</td>
+          <td style="padding:10px 12px;">KV_DAMP=0 dead 경로 주석 명시 or 삭제 (테스트 안정화 후)</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">15분</td>
+          <td style="padding:10px 12px; color:var(--red);">필요</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;"><span class="priority-badge priority-medium">5</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">pid.v</td>
+          <td style="padding:10px 12px;">VEL_SIGN_INV / GYRO_SIGN_INV 플래그 제거 (테스트 안정화 후)</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">10분</td>
+          <td style="padding:10px 12px; color:var(--red);">필요</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;"><span class="priority-badge priority-low">6</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">angle_calc.v</td>
+          <td style="padding:10px 12px;">라인 70–82 주석 블록 삭제</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">1분</td>
+          <td style="padding:10px 12px; color:var(--green);">불필요</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;"><span class="priority-badge priority-low">7</span></td>
+          <td style="padding:10px 12px; font-family:monospace; color:var(--accent2);">top.v</td>
+          <td style="padding:10px 12px;">rx_data wire 처리 결정</td>
+          <td style="padding:10px 12px; color:var(--text-dim);">2분</td>
+          <td style="padding:10px 12px; color:var(--green);">불필요</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- NOTES -->
+  <section>
+    <h2>참고 사항</h2>
+    <div class="card" style="line-height:2;">
+      <ul style="list-style:none; padding:0;">
+        <li>🔵 <strong>JGB37_520.v</strong> — 수동 테스트용 임시 top 모듈. 현재 소스 트리에 없음 (이전에 삭제됨). 이슈 없음.</li>
+        <li>🔵 <strong>tb_pid.v</strong> — 시뮬레이션 전용 테스트벤치. <code>sim_1</code> 폴더에 분리되어 있어 합성에 영향 없음. 이슈 없음.</li>
+        <li>🔵 <strong>baud_rate 모듈</strong> (uart_bluetooth.v) — <code>mpu6050_debug_uart</code> 내부에서 인스턴스화되어 실제로 사용 중. 삭제 대상 아님.</li>
+        <li>🟡 <strong>top.v 주석 vel_fb</strong> (line 176) — <code>// assign vel_fb = (enc_vel_a + enc_vel_b) >>> 1;</code> 대안 주석. 현재 <code>enc_vel_a - enc_vel_b</code> 방식 사용 중. 부호 관계 확인 후 필요 없으면 삭제 가능.</li>
+        <li>🟡 <strong>GYRO_D_SHIFT = 2</strong> (pid.v:97) — CLAUDE.md에 "사용자 직접 수정" 메모. 현재 코드는 2이나 실기기에서 1로 수정 필요할 수 있음. 코드와 문서 일치 여부 확인 권장.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div style="text-align:center; color:var(--text-dim); font-size:12px; padding-top:24px; border-top:1px solid var(--border);">
+    생성일: 2026-04-21 &nbsp;|&nbsp; 브랜치: dongwon &nbsp;|&nbsp; 분석 대상: 10개 .v 파일
+  </div>
+
+</div>
+
+<script>
+function toggle(header) {
+  const body = header.nextElementSibling;
+  const icon = header.querySelector('.toggle-icon');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  icon.textContent = isOpen ? '▼' : '▲';
+}
+// Open first 3 by default
+document.querySelectorAll('.issue-header').forEach((h, i) => {
+  if (i < 3) {
+    h.nextElementSibling.classList.add('open');
+    h.querySelector('.toggle-icon').textContent = '▲';
+  }
+});
+</script>
+</body>
+</html>

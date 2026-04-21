@@ -1,60 +1,6 @@
 `timescale 1ns / 1ps
 
 
-// module uart_bluetooth(
-//     input  clk,
-//     input  reset,
-//     input  rx_pin,
-//     output tx_pin
-// );
-
-//     wire        b_tick;
-//     wire [7:0]  rx_data;
-//     wire        rx_done;
-
-//     // echo 로직: rx_done 펄스 → tx_data/tx_start 생성
-//     reg [7:0] echo_data;
-//     reg       echo_start;
-
-//     always @(posedge clk or posedge reset) begin
-//         if (reset) begin
-//             echo_data  <= 0;
-//             echo_start <= 0;
-//         end else begin
-//             echo_start <= 0;          // 기본 0 (1클럭 펄스)
-//             if (rx_done) begin
-//                 echo_data  <= rx_data;
-//                 echo_start <= 1;
-//             end
-//         end
-//     end
-
-//     baud_rate u_baud(
-//         .clk(clk),
-//         .reset(reset),
-//         .b_tick(b_tick)
-//     );
-
-//     uart_tx u_tx(
-//         .clk(clk),
-//         .reset(reset),
-//         .b_tick(b_tick),
-//         .tx_start(echo_start),
-//         .tx_data(echo_data),
-//         .tx_pin(tx_pin),
-//         .tx_done()              // echo 용도에선 미사용
-//     );
-
-//     uart_rx u_rx(
-//         .clk(clk),
-//         .reset(reset),
-//         .rx_pin(rx_pin),
-//         .rx_data(rx_data),
-//         .rx_done(rx_done)
-//     );
-
-// endmodule
-
 
 module baud_rate (
     input clk,
