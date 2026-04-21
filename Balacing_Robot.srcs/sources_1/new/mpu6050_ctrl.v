@@ -74,8 +74,8 @@ module mpu6050_ctrl
     localparam [15:0] RESET_WAIT_TICKS  = 16'd5000;
 
     // 10us tick 기준
-    // 1000 -> 10ms
-    localparam [15:0] READ_PERIOD_TICKS = 16'd1000;
+    // 500 -> 5ms
+    localparam [15:0] READ_PERIOD_TICKS = 16'd500;
 
     //--------------------------------------------------------------------------
     // done pulse latch

@@ -74,8 +74,8 @@ set_property -dict { PACKAGE_PIN U18   IOSTANDARD LVCMOS33 } [get_ports {reset}]
 ##Pmod Header JA
 # set_property -dict { PACKAGE_PIN J1   IOSTANDARD LVCMOS33 } [get_ports {AIN1_out}];#Sch name = JA1
 # set_property -dict { PACKAGE_PIN L2   IOSTANDARD LVCMOS33 } [get_ports {AIN2_out}];#Sch name = JA2
-# set_property -dict { PACKAGE_PIN J2   IOSTANDARD LVCMOS33 } [get_ports {BIN1_out}];#Sch name = JA3
-# set_property -dict { PACKAGE_PIN G2   IOSTANDARD LVCMOS33 } [get_ports {BIN2_out}];#Sch name = JA4
+ set_property -dict { PACKAGE_PIN J2   IOSTANDARD LVCMOS33 } [get_ports {uart_tx}];#Sch name = JA3
+ set_property -dict { PACKAGE_PIN G2   IOSTANDARD LVCMOS33 } [get_ports {uart_rx}];#Sch name = JA4
 set_property -dict { PACKAGE_PIN H1   IOSTANDARD LVCMOS33 } [get_ports {i2c_sda}];#Sch name = JA7
 set_property -dict { PACKAGE_PIN K2   IOSTANDARD LVCMOS33 } [get_ports {i2c_scl}];#Sch name = JA8
 #set_property -dict { PACKAGE_PIN H2   IOSTANDARD LVCMOS33 } [get_ports {JA[6]}];#Sch name = JA9
@@ -132,8 +132,8 @@ set_property -dict { PACKAGE_PIN R18   IOSTANDARD LVCMOS33 } [get_ports {encB_b}
 ##USB-RS232 Interface
 #set_property -dict { PACKAGE_PIN B18   IOSTANDARD LVCMOS33 } [get_ports RsRx]
 #set_property -dict { PACKAGE_PIN A18   IOSTANDARD LVCMOS33 } [get_ports RsTx]
-set_property -dict { PACKAGE_PIN A18   IOSTANDARD LVCMOS33 } [get_ports uart_tx]
-set_property -dict { PACKAGE_PIN B18   IOSTANDARD LVCMOS33 } [get_ports uart_rx]
+#set_property -dict { PACKAGE_PIN A18   IOSTANDARD LVCMOS33 } [get_ports uart_tx]
+#set_property -dict { PACKAGE_PIN B18   IOSTANDARD LVCMOS33 } [get_ports uart_rx]
 
 ##USB HID (PS/2)
 #set_property -dict { PACKAGE_PIN C17   IOSTANDARD LVCMOS33   PULLUP true } [get_ports PS2Clk]
