@@ -48,3 +48,6 @@ rundef.*
 
 #클로드
 CLAUDE.md
+
+*.html
+system_flow.drawio

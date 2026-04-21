@@ -1,4 +1,3 @@
-# Project_5
 # FPGA 기반 자율 균형 로봇 — 동작원리 보고서
 
 **플랫폼**: Basys3 (Xilinx Artix-7 FPGA)  
