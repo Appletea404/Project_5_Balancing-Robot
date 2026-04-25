@@ -10,28 +10,23 @@ Basys3(Artix-7 FPGA)와 Encoder가 있는 Gear DC 모터(JGB37-520)를 활용하
 
 ## 2. Key Features (주요 기능)
 
-### 
-- 조이스틱(Joystick)을 통해 차체를 조종가능
-- PWM 신호를 통해 자동차의 속도를 변경 가능하고 이를 조이스틱 감도로 제어가능
+### ⚖️ 밸런싱 기능
+- PID 제어를 통한 밸런싱 로봇의 균형잡기
+- UART와 Bluetooth를 통한 원격 PID 튜닝
 
-### 🤖 Auto Mode (자율주행)
-
-- 센서(Ultrasonic) 데이터를 기반으로 장애물 회피
-- 데이터를 이중으로 비교하여 회전 중에도 재판단
-- 코너에 진입했는데 전면과의 거리가 너무 가까우면 넓은 방향으로 후진
 
 ## 🛠 3.  Tech Stack (기술 스택)
 
 
 ### 3.1 Language (사용언어)
 
-![C](https://img.shields.io/badge/c-%2300599C.svg?style=for-the-badge&logo=c&logoColor=white)
+<img src="https://img.shields.io/badge/Verilog-FAD000?style=for-the-badge&logo=microchip&logoColor=black">
 
 ### 3.2 Development Environment (개발 환경)
 | IDE | Configuration |
 | :---: | :---: |
-| ![STM32CubeIDE](images/stm32cubeide.png) | ![STM32CubeMX](images/stm32cubemx.png) |
-| **STM32CubeIDE** | **STM32CubeMX** |
+| ![STM32CubeIDE](images/vivado.png) | ![STM32CubeMX](images/vscode.png) |
+| **AMD Vivado** | **VS code** |
 
 ### 3.3 Collaboration Tools (협업 도구)
 
@@ -43,34 +38,29 @@ Basys3(Artix-7 FPGA)와 Encoder가 있는 Gear DC 모터(JGB37-520)를 활용하
 ### 4.1 Project Tree (프로젝트 트리)
 
 ```
-Project3_AutoMobility/
-├── RC_CAR_R02/                 # [Receiver] RC카 본체 제어부 (STM32F411RETx)
-│   ├── Core/
-│   │   ├── Src/                # 핵심 주행 및 제어 소스 코드 (.c)
-│   │   │   ├── main.c          # 주변장치 초기화 및 메인 제어 루프
-│   │   │   ├── car.c           # L298N 모터 드라이버 구동 로직
-│   │   │   ├── statemachine.c  # Manual/Auto 모드 전환 상태 머신
-│   │   │   ├── ultrasonic.c    # 초음파 센서 거리 측정 및 장애물 판단
-│   │   │   ├── direction.c     # 차량 조향 알고리즘 구현
-│   │   │   ├── speed.c         # PWM 기반 모터 속도 제어
-│   │   │   └── stm32f4xx_it.c  # 타이머/센서 인터럽트 서비스 루틴
-│   │   └── Inc/                # 함수 선언 및 하드웨어 설정 헤더 (.h)
-│   └── RC_CAR_R02.ioc          # STM32CubeMX 하드웨어 구성 파일
-│
-├── Remote/                     # [Transmitter] 조이스틱 컨트롤러 (STM32F411CEUx)
-│   ├── Core/
-│   │   ├── Src/                # 조종기 구동 및 통신 소스 코드 (.c)
-│   │   │   ├── main.c          # 컨트롤러 메인 로직
-│   │   │   ├── bt_master.c     # 블루투스 마스터 통신 (데이터 송신)
-│   │   │   ├── adc.c           # 조이스틱 아날로그 신호 수집
-│   │   │   └── dma.c           # 센서 데이터 고속 처리를 위한 DMA 설정
-│   │   └── Inc/                # 컨트롤러 헤더 파일 (.h)
-│   └── Remote.ioc              # Remote 전용 CubeMX 설정 파일
-│
-├── images/                     # README 및 기술 문서용 이미지 리소스 (회로도, 다이어그램 등)
-└── README.md                   # 프로젝트 전체 가이드 문서
+Project_5_Balancing-Robot/
+├── Balacing_Robot.srcs/                # 핵심 하드웨어 설계 소스 및 제약 파일
+│   ├── constrs_1/
+│   │   └── imports/
+│   │       └── fpga/
+│   │           └── Basys-3-Master.xdc  # Basys3 보드 핀 할당 및 물리 제약 파일
+│   └── sources_1/
+│       └── new/                        # Verilog HDL 설계 소스 코드 (.v)
+│           ├── top.v                   # 시스템을 통합하는 최상위 메인 제어 모듈
+│           ├── pid.v                   # 로봇 균형 제어용 핵심 PID 알고리즘
+│           ├── angle_calc.v            # 원시 센서 데이터 기반 기울기 각도 산출
+│           ├── mpu6050_ctrl.v          # MPU6050 자이로 및 가속도 센서 제어기
+│           ├── mpu6050_debug_uart.v    # 10진수 변환 및 디버깅용 UART 출력 로직
+│           ├── encoder.v               # 홀 엔코더 신호 분석 및 바퀴 속도 측정
+│           ├── TB6612FNG.v             # DC 기어 모터 제어용 PWM 및 방향 신호 생성
+│           ├── i2c_master.v            # 센서 데이터 수집용 I2C 마스터 프로토콜
+│           ├── uart_bluetooth.v        # 조종기 블루투스 제어 명령 수신 및 디코더
+│           └── clk_divider.v           # 시스템 타이밍 동기화용 클럭 분주기
+├── Balacing_Robot.tcl                  # Vivado 프로젝트 환경 자동 복원 스크립트
+├── README.md                           # 프로젝트 전체 개요 및 빌드 가이드 문서
+├── REPORT.md                           # 실험 과정, 트러블슈팅 및 결과 분석 보고서
+└── .gitignore                          # Git 버전 관리 제외 항목 설정 파일
 ```
-
 
 ### 4.2 Hardware BlockDiagram (하드웨어 블록다이어그램)
 
