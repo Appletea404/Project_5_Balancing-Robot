@@ -20,12 +20,11 @@ Basys3(Artix-7 FPGA)와 Encoder가 있는 Gear DC 모터(JGB37-520)를 활용하
 
 ### 3.1 Language (사용언어)
 
-<img src="https://img.shields.io/badge/Verilog-FAD000?style=for-the-badge&logo=microchip&logoColor=black">
+![Verilog](https://img.shields.io/badge/Verilog-FF6600?style=for-the-badge&logo=v&logoColor=white)
 
 ### 3.2 Development Environment (개발 환경)
-| IDE | Configuration |
+| ![vivado](images/vivado.png) | ![vscode](images/vscode.png) |
 | :---: | :---: |
-| ![STM32CubeIDE](images/vivado.png) | ![STM32CubeMX](images/vscode.png) |
 | **AMD Vivado** | **VS code** |
 
 ### 3.3 Collaboration Tools (협업 도구)
