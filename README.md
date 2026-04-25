@@ -63,32 +63,37 @@ Project_5_Balancing-Robot/
 
 ### 4.2 Hardware BlockDiagram (하드웨어 블록다이어그램)
 
-![BlockDiagram](images/Project3_Automobility_BlockDiagram.png)
+![BlockDiagram](images/HW_BLOCK_DIAGRAM.png)
 
-### 4.3 State Machine (상태 머신)
+### 4.3 RTL Block-Diagram (RTL 블록다이어그램)
 
-![alt text](images/Project3_Automobility_Statemachine.png)
+![BlockDiagram](images/RTL_Blockdiagram.png)
+
+
+### 4.4 Flow Chart (순서도)
+
+![alt text](images/System_Flow_Horizontal.png)
 
 ## 🏁 5. Final Product & Demonstration (완성품 및 시연)
 
 ### 5.1 Final Product (완성품)
 <br>
 
-| **전체 샷 (Full Setup)** | **조종기 측면 (Side)** | **조종기 후면 (Back)** |
+| **전면 (Front)** | **상단 (Top)** | **하단 (Bottom)** |
 | :---: | :---: | :---: |
-| ![Full](images/5.jpg) | ![Wiring](images/6.jpg)  | ![MCU](images/4.jpg) |
+| <img src="images/Front.jpg" width="250"> | <img src="images/Top.jpg" width="250"> | <img src="images/Bottom.jpg" width="250"> |
 
 <br>
 
-| **차량 전면(Front)** | **차량 측면 (Side)** | **차량 하단 (Bottom)** |
+| **후면 (Back)** | **가속도,자이로센서 (MPU6050)** | **모터드라이버 (TB6612FNG)** |
 | :---: | :---: | :---: |
-| ![Front](images/7.jpg) | ![Side](images/2.jpg) | ![Bottom](images/3.jpg) |
+| <img src="images/Back.jpg" width="250"> | <img src="images/MPU6050.jpg" width="250"> | <img src="images/Motor_Driver.jpg" width="250"> |
 
 <br>
 
 ### 5.2  Demonstration (시연 영상)
 
-<a href="https://youtube.com/playlist?list=PL6xfXHA4BYR_6b3oBZIrsHkHDf97zLFjA&si=EPpmTzlfJeoMHaCG" target="_blank">
+<a href="https://youtu.be/Q5w-YqaQoTA?si=gKLwD9LEihRDKcvt" target="_blank">
   <img src="images/youtube.jpg" alt="Watch Demo Video" width="300" />
 </a>
 
@@ -97,7 +102,7 @@ Project_5_Balancing-Robot/
 
 ## 6. Troubleshooting (문제 해결 기록)
 
-### 6.1 초음파 센서 데이터가 튐 (Outlier)
+### 6.1 타이밍에러 (Timing Error)
 
 
 🔍  **Issue (문제 상황)**
