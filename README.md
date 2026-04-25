@@ -1,383 +1,177 @@
-# Project_5
-# FPGA 기반 자율 균형 로봇 — 동작원리 보고서
 
-**플랫폼**: Basys3 (Xilinx Artix-7 FPGA)  
-**언어**: Verilog HDL  
-**날짜**: 2026-04-22
+![title](images/title.png)
+
+
+# 🤖 Project 5 Balancing Robot
+
+## **1. Project Summary (프로젝트 요약)**
+Basys3(Artix-7 FPGA)와 Encoder가 있는 Gear DC 모터(JGB37-520)를 활용하여  밸런싱 로봇 제작
+
+
+## 2. Key Features (주요 기능)
+
+### 
+- 조이스틱(Joystick)을 통해 차체를 조종가능
+- PWM 신호를 통해 자동차의 속도를 변경 가능하고 이를 조이스틱 감도로 제어가능
+
+### 🤖 Auto Mode (자율주행)
+
+- 센서(Ultrasonic) 데이터를 기반으로 장애물 회피
+- 데이터를 이중으로 비교하여 회전 중에도 재판단
+- 코너에 진입했는데 전면과의 거리가 너무 가까우면 넓은 방향으로 후진
+
+## 🛠 3.  Tech Stack (기술 스택)
+
+
+### 3.1 Language (사용언어)
+
+![C](https://img.shields.io/badge/c-%2300599C.svg?style=for-the-badge&logo=c&logoColor=white)
+
+### 3.2 Development Environment (개발 환경)
+| IDE | Configuration |
+| :---: | :---: |
+| ![STM32CubeIDE](images/stm32cubeide.png) | ![STM32CubeMX](images/stm32cubemx.png) |
+| **STM32CubeIDE** | **STM32CubeMX** |
+
+### 3.3 Collaboration Tools (협업 도구)
+
+![Github](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)![Notion](https://img.shields.io/badge/Notion-000000?style=for-the-badge&logo=notion&logoColor=white)
+
+
+## 📂 4.  Project Structure (프로젝트 구조)
+
+### 4.1 Project Tree (프로젝트 트리)
+
+```
+Project3_AutoMobility/
+├── RC_CAR_R02/                 # [Receiver] RC카 본체 제어부 (STM32F411RETx)
+│   ├── Core/
+│   │   ├── Src/                # 핵심 주행 및 제어 소스 코드 (.c)
+│   │   │   ├── main.c          # 주변장치 초기화 및 메인 제어 루프
+│   │   │   ├── car.c           # L298N 모터 드라이버 구동 로직
+│   │   │   ├── statemachine.c  # Manual/Auto 모드 전환 상태 머신
+│   │   │   ├── ultrasonic.c    # 초음파 센서 거리 측정 및 장애물 판단
+│   │   │   ├── direction.c     # 차량 조향 알고리즘 구현
+│   │   │   ├── speed.c         # PWM 기반 모터 속도 제어
+│   │   │   └── stm32f4xx_it.c  # 타이머/센서 인터럽트 서비스 루틴
+│   │   └── Inc/                # 함수 선언 및 하드웨어 설정 헤더 (.h)
+│   └── RC_CAR_R02.ioc          # STM32CubeMX 하드웨어 구성 파일
+│
+├── Remote/                     # [Transmitter] 조이스틱 컨트롤러 (STM32F411CEUx)
+│   ├── Core/
+│   │   ├── Src/                # 조종기 구동 및 통신 소스 코드 (.c)
+│   │   │   ├── main.c          # 컨트롤러 메인 로직
+│   │   │   ├── bt_master.c     # 블루투스 마스터 통신 (데이터 송신)
+│   │   │   ├── adc.c           # 조이스틱 아날로그 신호 수집
+│   │   │   └── dma.c           # 센서 데이터 고속 처리를 위한 DMA 설정
+│   │   └── Inc/                # 컨트롤러 헤더 파일 (.h)
+│   └── Remote.ioc              # Remote 전용 CubeMX 설정 파일
+│
+├── images/                     # README 및 기술 문서용 이미지 리소스 (회로도, 다이어그램 등)
+└── README.md                   # 프로젝트 전체 가이드 문서
+```
+
+
+### 4.2 Hardware BlockDiagram (하드웨어 블록다이어그램)
+
+![BlockDiagram](images/Project3_Automobility_BlockDiagram.png)
+
+### 4.3 State Machine (상태 머신)
+
+![alt text](images/Project3_Automobility_Statemachine.png)
+
+## 🏁 5. Final Product & Demonstration (완성품 및 시연)
+
+### 5.1 Final Product (완성품)
+<br>
+
+| **전체 샷 (Full Setup)** | **조종기 측면 (Side)** | **조종기 후면 (Back)** |
+| :---: | :---: | :---: |
+| ![Full](images/5.jpg) | ![Wiring](images/6.jpg)  | ![MCU](images/4.jpg) |
+
+<br>
+
+| **차량 전면(Front)** | **차량 측면 (Side)** | **차량 하단 (Bottom)** |
+| :---: | :---: | :---: |
+| ![Front](images/7.jpg) | ![Side](images/2.jpg) | ![Bottom](images/3.jpg) |
+
+<br>
+
+### 5.2  Demonstration (시연 영상)
+
+<a href="https://youtube.com/playlist?list=PL6xfXHA4BYR_6b3oBZIrsHkHDf97zLFjA&si=EPpmTzlfJeoMHaCG" target="_blank">
+  <img src="images/youtube.jpg" alt="Watch Demo Video" width="300" />
+</a>
+
+*이미지를 클릭하면 시연 영상(유튜브)로 이동합니다.*
+
+
+## 6. Troubleshooting (문제 해결 기록)
+
+### 6.1 초음파 센서 데이터가 튐 (Outlier)
+
+
+🔍  **Issue (문제 상황)**
+
+- 자율 주행 모드 주행 중, 전방에 장애물이 없음에도 불구하고 차량이 회피할려고 회전함
+
+❓ **Analysis (원인 분석)**
+
+- STM32 디버깅 툴을 통해 3개의 초음파 센서의 데이터를 검사한 결과 **200cm**가 넘는 값이 일시적으로 감지됨을 인지
+
+- 이러한 급격한 데이터 변화가 자율 주행 로직의 판단 임계치를 순간적으로 넘기면서 시스템 오작동을 유발함
+
+❗ **Action (해결 방법)**
+
+- 지나치게 먼거리라 판단하면 최대거리 **100cm**으로 고정시킴
+
+✅ **Result (결과)**
+
+- 센서 데이터의 값이 오버해서 차량이 오작동하는 일이 없어짐
 
 ---
 
-## 1. 시스템 개요
+### 6.2 장애물 회피 시 방향 결정 알고리즘의 불안정성 (Left-Right Misjudgment) 
 
-본 프로젝트는 FPGA 위에서 **센서 읽기 → 각도 추정 → PID 제어 → 모터 출력**의 전 과정을 하드웨어로 구현한 2륜 자율 균형 로봇이다. 모든 제어 로직은 Basys3 보드의 100 MHz 클럭 아래에서 병렬로 동작하며, 외부 MCU 없이 FPGA 단독으로 제어를 수행한다.
 
-### 하드웨어 구성
+🔍  **Issue (문제 상황)**
 
-| 구성요소 | 역할 |
-|---|---|
-| Basys3 (Xilinx Artix-7) | FPGA — 모든 제어 로직 |
-| MPU6050 | 6축 IMU (가속도 3축 + 자이로 3축), I2C 통신 |
-| TB6612FNG | 듀얼 채널 모터 드라이버, 20 kHz PWM 제어 |
-| JGB37-520 × 2 | 감속 기어드 DC 모터 (엔코더 내장) |
-| UART (USB-UART) | PC ↔ FPGA 디버그 및 런타임 이득 조정 |
+- 자율 주행 모드 주행 중, 우회전해야하는 상황에서 좌회전을 하는 등 오판을 함
 
----
+❓ **Analysis (원인 분석)**
 
-## 2. 모듈 구조 및 역할
+- 정면 거리 측정 후 좌우 공간을 순차적으로 판단하는 우선순위 기반 로직의 특성상, 공간이 급격히 좁아지는 **코너 구석(Corner Nook)** 진입 시 측면 데이터를 충분히 반영하지 못하는 오판 현상이 발생함.
 
-```
-top.v  (최상위)
-├── clk_divider.v        100 MHz → 100 kHz tick 생성
-├── i2c_master.v         I2C 마스터 FSM (write / burst-read)
-├── mpu6050_ctrl.v       MPU6050 초기화 + 6축 원시 데이터 파싱
-├── angle_calc.v         상보 필터 — 각도 추정 (0.01° 단위)
-├── pid.v                7단계 파이프라인 PID 제어기
-├── TB6612FNG.v          20 kHz PWM 생성 + 방향 제어
-├── encoder.v            쿼드라처 엔코더 디코더 (위치·속도)
-├── uart_rx              UART 수신 (런타임 이득 입력)
-└── mpu6050_debug_uart.v 디버그 상태 PC 전송
-```
+❗ **Action (해결 방법)**
+
+- 왼쪽 중앙 오른쪽 모든 센서의 거리중에서 가장 짧은 거리를 선별하여 그 쪽을 우선하여 회피하도록 로직을 수정
+
+✅ **Result (결과)**
+
+- 좌우판단을 더 이상 오판하지 않음
 
 ---
 
-## 3. 전체 시스템 흐름
+### 6.3  넓은 코너에 진입하면 갇힘 (Get trapped in Wide Corner) 
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              top.v                                          │
-│                                                                             │
-│  ┌──────────┐   I2C    ┌──────────┐  raw 6축  ┌──────────────┐             │
-│  │i2c_master│◄────────►│mpu6050   │──────────►│ Bias 보정    │             │
-│  └──────────┘          │  _ctrl   │           │ (32샘플 평균)│             │
-│                        └──────────┘           └──────┬───────┘             │
-│                                                      │ corr ax/az/gx       │
-│                                               ┌──────▼───────┐             │
-│                                               │ angle_calc   │             │
-│                                               │ (상보 필터)  │             │
-│                                               └──────┬───────┘             │
-│                           encoder             │ angle (0.01°)              │
-│  ┌───────────────┐  vel/pos  │                │                             │
-│  │   encoder.v   │──────────►│  Outer Loop   │                             │
-│  └───────────────┘           │  (위치/속도   │                             │
-│                              │   보정)       │                             │
-│                              └──────┬────────┘                             │
-│                                     │ pid_setpoint                         │
-│  ┌──────────┐  P/I/D gain   ┌──────▼───────┐   pwm_duty  ┌─────────────┐  │
-│  │ UART RX  │──────────────►│   pid.v      │────────────►│ TB6612FNG   │  │
-│  └──────────┘               │ (7단 FSM)    │   dir       └──────┬──────┘  │
-│                             └──────────────┘                    │          │
-│                                                         PWMA/B AIN/BIN    │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                                                  │
-                                                          ┌───────▼────────┐
-                                                          │ JGB37-520 모터 │
-                                                          └────────────────┘
-```
 
----
+🔍  **Issue (문제 상황)**
 
-## 4. 각 처리 단계 상세 설명
+- 좌우가 넓은 코너에 코너 안쪽으로 비스듬하게 진입시 회전 판단을 미리 못하여 벽에 부딛힘
 
-### 4-1. 클럭 분주 (clk_divider.v)
+❓ **Analysis (원인 분석)**
 
-- 100 MHz 입력 클럭을 49999 카운터 주기로 나누어 **100 kHz tick** 출력
-- 모든 FSM(I2C, PID, Fall detection 타이머)이 이 tick을 기준으로 동작
+- 코너의 폭이 넓기 때문에 측면 센서가 인식하기에 거리가 너무 멀어서 정작 정면 센서쪽이 한계거리에 도달해도 회피판단을 못함
 
----
+❗ **Action (해결 방법)**
 
-### 4-2. I2C 통신 (i2c_master.v)
+- **Crash_Distance** 변수를 추가하여 정면센서가 이 거리에 도달하면 강제 후진 로직을 최우선으로 올림
+- 후진이후 강제로 회전하면서 좌우 센서값을 강제로 갱신시킴
+이후 회피판단 실행
 
-MPU6050과의 통신을 담당하는 **25상태 FSM**.
+✅ **Result (결과)**
 
-```
-  ┌────────────────────────────────────────────────────────────┐
-  │                   I2C Master FSM                           │
-  │                                                            │
-  │  IDLE ──► START_A ──► START_B                             │
-  │               │                                            │
-  │               ▼                                            │
-  │         WRITE_LOW ──► WRITE_HIGH ──► (8비트 반복)         │
-  │               │                                            │
-  │               ▼                                            │
-  │         ACK_LOW ──► ACK_RISE ──► ACK_HOLD ──► ACK_SAMPLE  │
-  │               │                                            │
-  │      ┌────────┴──────────────────┐                         │
-  │      │ Write                     │ Read                    │
-  │      ▼                           ▼                         │
-  │  (reg_addr → tx_data)    RSTART ──► DEV_ADDR_R             │
-  │      │                           │                         │
-  │      ▼                           ▼                         │
-  │   STOP                    READ_LOW ~ READ_STORE            │
-  │                           (burst: MACK 반복)               │
-  │                           → 마지막 바이트: NACK → STOP     │
-  │                                                            │
-  │   STOP_0 ──► STOP_1 ──► STOP_2 ──► DONE ──► IDLE          │
-  └────────────────────────────────────────────────────────────┘
-```
+- 넓은 코너에서 더 이상 갇히는 일이 없어짐
 
-**open-drain 제어 원칙**
-- `sda_enable=1` → SDA를 Low로 당김
-- `sda_enable=0` → SDA 해제 (외부 풀업 → High)
-- SCL도 동일 원칙 적용
 
-**지원 트랜잭션**
-| 종류 | 흐름 |
-|---|---|
-| Write | START → DEV_ADDR_W → REG_ADDR → TX_DATA → ACK × 3 → STOP |
-| Burst Read | START → DEV_ADDR_W → REG_ADDR → R-START → DEV_ADDR_R → [DATA + ACK] × N → NACK → STOP |
 
----
-
-### 4-3. MPU6050 제어 (mpu6050_ctrl.v)
-
-- 초기화 시퀀스: 슬립 해제, 샘플레이트·필터 설정 레지스터 write
-- 초기화 완료(`init_done=1`) 후 5 ms 주기로 가속도(AX~AZ) + 자이로(GX~GZ) 6축 **14바이트 burst read**
-- 각 축 raw 16-bit signed 값을 `ax_raw ~ gz_raw`로 출력
-
----
-
-### 4-4. 바이어스 보정 (top.v 내장)
-
-초기화 완료 직후 **32샘플**을 누적·평균해 정적 오프셋(바이어스)을 계산하고 이후 모든 데이터에서 차감.
-
-```
-bias_done = 0 구간:
-    data_valid 때마다 ax_sum += ax_raw  (32회)
-    cal_cnt == 31 → ax_bias = ax_sum/32, bias_done = 1
-
-이후:
-    ax_corr = ax_raw - ax_bias  (6축 모두)
-```
-
----
-
-### 4-5. 각도 추정 (angle_calc.v) — 상보 필터
-
-가속도계와 자이로스코프 각각의 단점을 보완하는 **2단 파이프라인 상보 필터**.
-
-| 센서 | 특성 |
-|---|---|
-| 가속도계 | 정적으로 정확, 동적 노이즈 큼 |
-| 자이로스코프 | 단기 변화 정확, 장기 드리프트 발생 |
-
-**수식**
-```
-angle[n] = α × (angle[n-1] + gyro × dt) + (1-α) × accel_angle
-         α = 249/256 ≈ 0.97
-```
-
-**구현 (2-stage pipeline)**
-```
-Stage 1 (data_valid 클럭):
-    accel_q8_reg = accel_x × 60
-    gyro_q8_reg  = (gyro_x × 250) >> 8
-
-Stage 2 (다음 클럭):
-    angle_q8 = (249 × (angle_q8 + gyro_q8_reg) + 7 × accel_q8_reg) >> 8
-    angle    = angle_q8[23:8]   // Q8 정규화 → 0.01° 단위
-    angle_valid = 1 (1클럭 펄스)
-```
-
----
-
-### 4-6. 외부 루프 — 위치/속도 보정 (top.v)
-
-엔코더로 측정한 바퀴 위치/속도를 이용해 setpoint를 동적으로 보정.
-
-```
-pos_err = enc_pos_a - enc_pos_b - enc_ref    // 위치 오차
-vel_err = enc_vel_a - enc_vel_b              // 속도 오차
-
-sp_corr = (pos_err × kv_reg) >> 8 + (vel_err × KV_VEL) >> 4
-pid_setpoint = setpoint_reg - clamp(sp_corr, ±260)
-```
-
-이를 통해 로봇이 제자리를 유지하며 외부 힘에 의한 이동을 스스로 복원.
-
----
-
-### 4-7. PID 제어기 (pid.v) — 7단계 FSM
-
-```
-ST_IDLE  →  ST_TERMS  →  ST_INTEG  →  ST_SUM  →  ST_OUT  →  ST_APPLY  →  ST_PWM
-  ↑                                                                           │
-  └───────────────────────────────────────────────────────────────────────────┘
-```
-
-| 단계 | 처리 내용 |
-|---|---|
-| ST_IDLE | `en` 펄스 대기, 오차 갱신 |
-| ST_TERMS | P항(KP×error), I항(KI×error), D항(KD×gyro) 곱셈 |
-| ST_INTEG | 적분 누적 (Dead zone ±8 내에서 감쇠, Anti-windup ±500000) |
-| ST_SUM | `pid_sum = P + I - D` 합산 |
-| ST_OUT | 방향(dir) 결정, 히스테리시스 적용, Center-Hold 판단 |
-| ST_APPLY | duty 매핑(소/중/대 구간 piecewise), 부스트, 포화 처리 |
-| ST_PWM | `pwm_duty = motor_duty × 10` (shift-add 구현) |
-
-**D항**: 각도 차분 대신 **자이로 직접 사용** → 급격한 기울기 변화에 즉각 반응
-
-**duty 매핑 (piecewise)**
-```
-pid_out_abs ≤ 160  →  duty = pid_out_abs >> 4        (작은 영역, 조용)
-160 < abs ≤ 260    →  duty = 24 + (delta >> 10)      (중간, 부드러운 회복)
-260 < abs           →  duty = 52 + (delta >> 6)       (큰 영역, 강한 회복)
-```
-
-**Center-Hold**: 오차 ±6 이하 + 속도 ±8 이하이면 모터 출력 0으로 잠금 (미세 진동 방지)
-
----
-
-### 4-8. 낙하 감지 및 복구 FSM (top.v)
-
-```
-  ┌─────────────────────────────────────────────────────────────┐
-  │                  Fall Detection FSM                         │
-  │                                                             │
-  │   FSM_STAND                                                 │
-  │      │  |angle_adj| > 12°                                  │
-  │      ▼                                                      │
-  │   FSM_FALLEN  ──── 모터 강제 정지                           │
-  │      │  3초 대기 (tick × 300000)                            │
-  │      ▼                                                      │
-  │   FSM_RECOVER ──── PID 재가동, 적분 초기화                  │
-  │      │  |angle_adj| < 7° 로 안정화                          │
-  │      ▼                                                      │
-  │   FSM_STAND  (복귀)                                         │
-  │                                                             │
-  │   * FSM_RECOVER에서 2초 내 미복귀 → FSM_FALLEN 재진입      │
-  └─────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 4-9. 모터 출력 (TB6612FNG.v)
-
-- **PWM 주파수**: 20 kHz (100 MHz / 5000 카운터)
-- **duty 범위**: 0 ~ 100 % (`dutyA/B × 50` 비교값으로 변환)
-- **방향 제어**: AIN1/AIN2, BIN1/BIN2 조합
-
-| dirX_cmd | 동작 |
-|---|---|
-| 2'b00 | 정지 (coast) |
-| 2'b10 | CW |
-| 2'b01 | CCW |
-| 2'b11 | 브레이크 |
-
-> 모터 B는 좌우 대칭 장착으로 방향 비트가 반전됨 (`top.v`에서 `{cmd[0], cmd[1]}`)
-
----
-
-### 4-10. 엔코더 (encoder.v)
-
-- 2단 FF 동기화로 비동기 입력 노이즈 제거
-- 쿼드라처 디코딩: 이전/현재 AB 상태 전이 테이블로 +1/0/-1 판정
-- 속도 측정: `vel_period` 클럭마다 위치 차분 → `vel_a/b`
-
----
-
-### 4-11. UART 런타임 제어
-
-PC 터미널에서 명령어 전송으로 이득값 실시간 조정:
-
-| 명령 | 형식 | 동작 |
-|---|---|---|
-| P | `P<숫자>\r` | KP 이득 변경 |
-| I | `I<숫자>\r` | KI 이득 변경 |
-| D | `D<숫자>\r` | KD 이득 변경 |
-| V | `V<숫자>\r` | 위치 루프 이득(kv) 변경 |
-| S | `S` | 현재 각도를 균형점(0)으로 설정, 엔코더 기준 초기화 |
-
----
-
-## 5. 제어 신호 타이밍
-
-```
-100 MHz clk  ████████████████████████████████████
-100 kHz tick ─┐ ─┐ ─┐ (매 10μs 1클럭 펄스)
-
-I2C 트랜잭션  ────[5ms 주기 burst read]──────────
-
-data_valid   ─────────────────────────┐ (1클럭)
-
-angle_valid  ──────────────────────────┐┐ (2클럭 후 펄스)
-
-PID en       ────────────────────────────┐┐┐ (3클럭 파이프라인 후)
-
-PID FSM      ────[7클럭 동안 ST0→ST6]────
-
-PWM counter  ████ 20kHz 연속 카운트 ████████
-```
-
----
-
-## 6. 전체 제어 루프 흐름도 (요약)
-
-```
-         ┌─────────────────────────────────────────────────────┐
-         │                   매 5 ms 주기                      │
-         │                                                     │
-         │  MPU6050                                            │
-         │  ┌──────────┐  I2C burst   ┌──────────────────┐    │
-         │  │ 6축 센서  │────────────►│ raw AX/AY/AZ     │    │
-         │  └──────────┘  14 bytes    │     GX/GY/GZ     │    │
-         │                           └────────┬─────────┘    │
-         │                                    │ - bias        │
-         │                           ┌────────▼─────────┐    │
-         │                           │  상보 필터         │    │
-         │                           │ α=0.97 gyro+accel │    │
-         │                           └────────┬─────────┘    │
-         │                                    │ angle (0.01°) │
-         │                           ┌────────▼─────────┐    │
-         │  엔코더 ──vel/pos─────────►│  Outer Loop       │    │
-         │                           │  위치/속도 보정    │    │
-         │                           └────────┬─────────┘    │
-         │                                    │ pid_setpoint  │
-         │                           ┌────────▼─────────┐    │
-         │  UART 이득 ────KP/KI/KD──►│   PID 제어기      │    │
-         │                           │  7-stage FSM      │    │
-         │                           └────────┬─────────┘    │
-         │                                    │ duty / dir    │
-         │           Fall FSM ──cut──► ┌──────▼──────┐       │
-         │                             │ TB6612FNG   │       │
-         │                             │ 20kHz PWM   │       │
-         │                             └──────┬──────┘       │
-         └────────────────────────────────────│──────────────┘
-                                              │
-                                    ┌─────────▼──────────┐
-                                    │  JGB37-520 모터 ×2  │
-                                    └────────────────────┘
-                                              │
-                                    ┌─────────▼──────────┐
-                                    │    로봇 기울기       │
-                                    │    (피드백 루프)     │
-                                    └────────────────────┘
-```
-
----
-
-## 7. 주요 파라미터 (현재 설정값)
-
-| 파라미터 | 값 | 설명 |
-|---|---|---|
-| KP | 450 | 비례 이득 (런타임 변경 가능) |
-| KI | 2 | 적분 이득 |
-| KD | 500 | 미분 이득 |
-| α (상보 필터) | 0.97 (≈249/256) | 자이로 신뢰 비율 |
-| DUTY_ACTIVE_MIN | 20 % | 모터 최소 구동 duty |
-| DUTY_MAX_MOTOR | 75 % | 모터 최대 구동 duty |
-| FALL_ENTER_THR | 12° (1200) | 낙하 감지 임계값 |
-| FALL_STABLE_THR | 7° (700) | 복구 안정화 임계값 |
-| FALL_WAIT_TICKS | 3초 | 낙하 후 정지 대기 |
-| RECOVER_MAX_TICKS | 2초 | 복구 시도 최대 시간 |
-
----
-
-## 8. 특이사항 및 설계 결정
-
-1. **open-drain I2C**: `sda_enable=1 → SDA=0, =0 → SDA=Z` 방식으로 외부 풀업 사용
-2. **D항 자이로 직접 사용**: 각도 차분보다 자이로 신호가 즉각적이어서 외란 대응에 유리
-3. **Center-Hold**: 미세 진동 억제를 위해 균형점 근방에서 모터 출력 차단 (히스테리시스 적용)
-4. **모터 B 방향 반전**: 좌우 대칭 장착으로 인한 B채널 방향 하드웨어 반전
-5. **방향 히스테리시스**: PID 출력이 0 근방에서 진동 시 빠른 방향 전환 방지
-6. **Start Boost**: 정지 상태에서 정적 마찰 극복을 위한 1회성 duty 부스트
-7. **TB6612FNG STBY**: 하드웨어 STBY 핀은 반드시 VCC에 연결해야 동작
